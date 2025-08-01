@@ -49,11 +49,11 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
 
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  const retryWithBackoff = async (
-    fn: () => Promise<string>,
+  const retryWithBackoff = async <T extends any>(
+    fn: () => Promise<T>,
     maxRetries: number = 3,
     baseDelay: number = 1000
-  ): Promise<string> => {
+  ): Promise<T> => {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         return await fn();
@@ -105,10 +105,11 @@ Chart Analysis: ${charts.length} candlestick charts generated showing price acti
       const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
       const dynamicExpirationDate = generateExpirationDate();
       let recommendation = '';
+      let parsedRecommendation: OpenAIRecommendationResponse | undefined = undefined;
 
       if (openaiApiKey && openaiApiKey !== 'YOUR_OPENAI_API_KEY_HERE') {
         try {
-          const makeOpenAIRequest = async () => {
+          const makeOpenAIRequest = async (): Promise<{ recommendation: string; parsedRecommendation?: OpenAIRecommendationResponse }> => {
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
               method: 'POST',
               headers: {
@@ -199,18 +200,20 @@ Technical Data: ${chartDescriptions}`
                 console.log('Parsed OpenAI response:', parsedResponse);
                 const formattedRecommendation = formatRecommendationForDisplay(parsedResponse);
                 console.log('Formatted recommendation:', formattedRecommendation);
-                return formattedRecommendation;
+                return { recommendation: formattedRecommendation, parsedRecommendation: parsedResponse };
               } catch (jsonError) {
                 console.error('Failed to parse OpenAI JSON response, using raw content:', jsonError);
                 console.error('Content that failed to parse:', jsonContent);
-                return formatPlainTextResponse(content);
+                return { recommendation: formatPlainTextResponse(content) };
               }
             } else {
               throw new Error('Invalid response from OpenAI');
             }
           };
 
-          recommendation = await retryWithBackoff(makeOpenAIRequest, 3, 2000);
+          const result = await retryWithBackoff(makeOpenAIRequest, 3, 2000);
+          recommendation = result.recommendation;
+          parsedRecommendation = result.parsedRecommendation;
 
         } catch (openaiError) {
           console.error('OpenAI API failed after retries:', openaiError);
@@ -243,7 +246,7 @@ Technical Data: ${chartDescriptions}`
                 recommendation, 
                 loading: false,
                 charts,
-                parsedRecommendation: undefined
+                parsedRecommendation
               }
             : r
         )
