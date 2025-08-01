@@ -168,16 +168,16 @@ Technical Data: ${chartDescriptions}`
           if (openaiError instanceof Error) {
             if (openaiError.message.includes('rate_limit')) {
               console.error('Rate limit exceeded for OpenAI API');
-              recommendation = generateRateLimitAnalysis(symbol, data, charts);
+              recommendation = generateRateLimitAnalysis(data, charts);
             } else if (openaiError.message.includes('invalid_api_key')) {
               console.error('Invalid OpenAI API key');
               recommendation = generateDemoAnalysis(symbol, charts);
             } else {
               console.error('OpenAI API error:', openaiError.message);
-              recommendation = generateTechnicalFallbackAnalysis(symbol, data, charts);
+              recommendation = generateTechnicalFallbackAnalysis(data, charts);
             }
           } else {
-            recommendation = generateTechnicalFallbackAnalysis(symbol, data, charts);
+            recommendation = generateTechnicalFallbackAnalysis(data, charts);
           }
         }
       } else {
@@ -279,27 +279,27 @@ To get actual AI-powered options trading recommendations:
 The technical infrastructure is working correctly and ready for AI-powered analysis once an API key is provided.`;
   };
 
-  const generateRateLimitAnalysis = (symbol: string, data: any, charts: ChartImage[]): string => {
+  const generateRateLimitAnalysis = (data: any, charts: ChartImage[]): string => {
     return `📊 TECHNICAL ANALYSIS (RATE LIMITED)
 
 ⚠️ OpenAI API rate limit exceeded. Providing technical analysis based on calculated indicators.
 
-${generateTechnicalFallbackContent(symbol, data, charts)}
+${generateTechnicalFallbackContent(data, charts)}
 
 🔄 Please wait a few minutes before trying again for AI-powered analysis.`;
   };
 
-  const generateTechnicalFallbackAnalysis = (symbol: string, data: any, charts: ChartImage[]): string => {
+  const generateTechnicalFallbackAnalysis = (data: any, charts: ChartImage[]): string => {
     return `📊 TECHNICAL ANALYSIS (FALLBACK MODE)
 
 ⚠️ AI analysis temporarily unavailable. Providing technical analysis based on calculated indicators.
 
-${generateTechnicalFallbackContent(symbol, data, charts)}
+${generateTechnicalFallbackContent(data, charts)}
 
 🔄 Technical analysis is based on RSI, moving averages, volume, and momentum indicators.`;
   };
 
-  const generateTechnicalFallbackContent = (symbol: string, data: any, charts: ChartImage[]): string => {
+  const generateTechnicalFallbackContent = (data: any, charts: ChartImage[]): string => {
     const timeframes = charts.map(c => c.timeframe).join(', ');
     
     const technicalSummary = [
