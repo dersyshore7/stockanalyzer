@@ -56,6 +56,7 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
       ).join('\n');
 
       const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
+      const dynamicExpirationDate = generateExpirationDate();
       let recommendation = '';
 
       if (openaiApiKey && openaiApiKey !== 'YOUR_OPENAI_API_KEY_HERE') {
@@ -86,7 +87,7 @@ IMPORTANT: Respond with ONLY valid JSON in this exact format (no markdown, no ex
     "optionType": "call" | "put", 
     "targetPrice": number,
     "priceType": "bid" | "ask",
-    "expirationDate": "${generateExpirationDate()}"
+    "expirationDate": "${dynamicExpirationDate}"
   },
   "reasoning": "Detailed explanation based on candlestick patterns"
 }
