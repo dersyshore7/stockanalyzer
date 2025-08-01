@@ -40,6 +40,36 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
   const [currentSymbolIndex, setCurrentSymbolIndex] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+  const retryWithBackoff = async (
+    fn: () => Promise<string>,
+    maxRetries: number = 3,
+    baseDelay: number = 1000
+  ): Promise<string> => {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (attempt === maxRetries) {
+          throw error;
+        }
+        
+        const isRateLimit = error instanceof Error && 
+          (error.message.includes('rate_limit') || error.message.includes('429'));
+        
+        if (isRateLimit) {
+          const delay = baseDelay * Math.pow(2, attempt - 1);
+          console.log(`Rate limit detected, retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
+          await sleep(delay);
+        } else {
+          throw error;
+        }
+      }
+    }
+    throw new Error('Max retries exceeded');
+  };
+
   const analyzeSymbol = async (symbol: string) => {
     try {
       setRecommendations(prev => [
@@ -71,20 +101,21 @@ Chart Analysis: ${charts.length} candlestick charts generated showing price acti
 
       if (openaiApiKey && openaiApiKey !== 'YOUR_OPENAI_API_KEY_HERE') {
         try {
-          const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${openaiApiKey}`
-            },
-            body: JSON.stringify({
-              model: 'gpt-4o',
-              messages: [{
-                role: 'user',
-                content: [
-                  {
-                    type: 'text',
-                    text: `Stock: ${symbol}
+          const makeOpenAIRequest = async () => {
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openaiApiKey}`
+              },
+              body: JSON.stringify({
+                model: 'gpt-4o',
+                messages: [{
+                  role: 'user',
+                  content: [
+                    {
+                      type: 'text',
+                      text: `Stock: ${symbol}
 
 Based on the charts provided, analyze the candlestick patterns and provide a recommendation. 
 
@@ -116,54 +147,66 @@ Consider the following for recommendations:
 Provide detailed reasoning explaining which specific technical indicators support your recommendation.
 
 Technical Data: ${chartDescriptions}`
-                  },
-                  ...charts.map(chart => ({
-                    type: 'image_url' as const,
-                    image_url: {
-                      url: chart.dataUrl
-                    }
-                  }))
-                ]
-              }],
-              max_tokens: 600,
-              temperature: 0.7
-            })
-          });
+                    },
+                    ...charts.map(chart => ({
+                      type: 'image_url' as const,
+                      image_url: {
+                        url: chart.dataUrl
+                      }
+                    }))
+                  ]
+                }],
+                max_tokens: 600,
+                temperature: 0.7
+              })
+            });
 
-          const result = await response.json();
-          
-          if (result.choices && result.choices[0]) {
-            const content = result.choices[0].message.content;
-            console.log('Raw OpenAI response:', content);
-            
-            let jsonContent = content;
-            if (content.includes('```json')) {
-              const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-              if (jsonMatch) {
-                jsonContent = jsonMatch[1];
+            if (!response.ok) {
+              if (response.status === 429) {
+                throw new Error('rate_limit_exceeded');
               }
-            } else if (content.includes('```')) {
-              const jsonMatch = content.match(/```\s*([\s\S]*?)\s*```/);
-              if (jsonMatch) {
-                jsonContent = jsonMatch[1];
-              }
+              throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
             }
+
+            const result = await response.json();
             
-            try {
-              const parsedResponse: OpenAIRecommendationResponse = JSON.parse(jsonContent.trim());
-              console.log('Parsed OpenAI response:', parsedResponse);
-              recommendation = formatRecommendationForDisplay(parsedResponse);
-              console.log('Formatted recommendation:', recommendation);
-            } catch (jsonError) {
-              console.error('Failed to parse OpenAI JSON response, using raw content:', jsonError);
-              console.error('Content that failed to parse:', jsonContent);
-              recommendation = formatPlainTextResponse(content);
+            if (result.choices && result.choices[0]) {
+              const content = result.choices[0].message.content;
+              console.log('Raw OpenAI response:', content);
+              
+              let jsonContent = content;
+              if (content.includes('```json')) {
+                const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+                if (jsonMatch) {
+                  jsonContent = jsonMatch[1];
+                }
+              } else if (content.includes('```')) {
+                const jsonMatch = content.match(/```\s*([\s\S]*?)\s*```/);
+                if (jsonMatch) {
+                  jsonContent = jsonMatch[1];
+                }
+              }
+              
+              try {
+                const parsedResponse: OpenAIRecommendationResponse = JSON.parse(jsonContent.trim());
+                console.log('Parsed OpenAI response:', parsedResponse);
+                const formattedRecommendation = formatRecommendationForDisplay(parsedResponse);
+                console.log('Formatted recommendation:', formattedRecommendation);
+                return formattedRecommendation;
+              } catch (jsonError) {
+                console.error('Failed to parse OpenAI JSON response, using raw content:', jsonError);
+                console.error('Content that failed to parse:', jsonContent);
+                return formatPlainTextResponse(content);
+              }
+            } else {
+              throw new Error('Invalid response from OpenAI');
             }
-          } else {
-            throw new Error('Invalid response from OpenAI');
-          }
+          };
+
+          recommendation = await retryWithBackoff(makeOpenAIRequest, 3, 2000);
+
         } catch (openaiError) {
-          console.error('OpenAI API failed:', openaiError);
+          console.error('OpenAI API failed after retries:', openaiError);
           
           if (openaiError instanceof Error) {
             if (openaiError.message.includes('rate_limit')) {
@@ -340,7 +383,8 @@ ${technicalSummary}
       await analyzeSymbol(symbols[i]);
       
       if (i < symbols.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 12000));
+        console.log(`Waiting 3 seconds before analyzing next stock to prevent rate limiting...`);
+        await sleep(3000);
       }
     }
     
