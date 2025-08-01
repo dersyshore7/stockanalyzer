@@ -45,15 +45,6 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
   const [currentSymbolIndex, setCurrentSymbolIndex] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [entryPrices, setEntryPrices] = useState<Record<string, string>>({});
-  const [manualTradeData, setManualTradeData] = useState<Record<string, {
-    strikePrice: string;
-    optionType: 'call' | 'put';
-    targetPrice: string;
-    expirationDate: string;
-    reasoning: string;
-    entryPrice: string;
-    showForm: boolean;
-  }>>({});
   const { confirmTrade, getTradeBySymbol, updateTradePrice } = useTradeTracking();
 
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -436,66 +427,6 @@ ${technicalSummary}
     setEntryPrices(prev => ({ ...prev, [symbol]: value }));
   };
 
-  const handleToggleManualTradeForm = (symbol: string) => {
-    setManualTradeData(prev => ({
-      ...prev,
-      [symbol]: {
-        ...prev[symbol],
-        showForm: !prev[symbol]?.showForm,
-        strikePrice: prev[symbol]?.strikePrice || '',
-        optionType: prev[symbol]?.optionType || 'call',
-        targetPrice: prev[symbol]?.targetPrice || '',
-        expirationDate: prev[symbol]?.expirationDate || '',
-        reasoning: prev[symbol]?.reasoning || '',
-        entryPrice: prev[symbol]?.entryPrice || '',
-      }
-    }));
-  };
-
-  const handleManualTradeDataChange = (symbol: string, field: string, value: string) => {
-    setManualTradeData(prev => ({
-      ...prev,
-      [symbol]: {
-        ...prev[symbol],
-        [field]: value
-      }
-    }));
-  };
-
-  const handleConfirmManualTrade = async (rec: OptionsRecommendation) => {
-    const tradeData = manualTradeData[rec.symbol];
-    if (!tradeData) return;
-
-    const manualRecommendation = {
-      recommendationType: 'Manual Trade Entry' as const,
-      action: {
-        strikePrice: parseFloat(tradeData.strikePrice) || 0,
-        optionType: tradeData.optionType,
-        targetPrice: parseFloat(tradeData.targetPrice) || 0,
-        priceType: 'ask' as const,
-        expirationDate: tradeData.expirationDate || generateExpirationDate(),
-      },
-      reasoning: tradeData.reasoning || 'Manual trade entry'
-    };
-
-    const entryPrice = tradeData.entryPrice ? parseFloat(tradeData.entryPrice) : undefined;
-    const tradeId = confirmTrade(rec.symbol, manualRecommendation, entryPrice);
-
-    if (entryPrice) {
-      const currentPrice = await priceMonitor.getCurrentPrice(rec.symbol);
-      if (currentPrice !== null) {
-        updateTradePrice(tradeId, currentPrice, entryPrice);
-      }
-    }
-
-    setManualTradeData(prev => ({
-      ...prev,
-      [rec.symbol]: {
-        ...prev[rec.symbol],
-        showForm: false
-      }
-    }));
-  };
 
   const isTradeConfirmed = (symbol: string) => {
     const existingTrade = getTradeBySymbol(symbol);
@@ -609,7 +540,7 @@ ${technicalSummary}
                     {rec.parsedRecommendation && rec.parsedRecommendation.recommendationType !== 'No Action Recommended' && (
                       <div className="border-t pt-4">
                         <div className="flex items-center justify-between mb-4">
-                          <h4 className="font-semibold">Paper Trade Tracking</h4>
+                          <h4 className="font-semibold">Track AI Recommendation</h4>
                           {getTradeStatus(rec.symbol)}
                         </div>
                         
@@ -636,7 +567,7 @@ ${technicalSummary}
                               className="w-full"
                               size="sm"
                             >
-                              Confirm Trade
+                              Track this trade
                             </Button>
                           </div>
                         ) : (
@@ -649,114 +580,6 @@ ${technicalSummary}
                       </div>
                     )}
                     
-                    <div className="border-t pt-4 mt-4">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-semibold">Manual Trade Entry</h4>
-                        {getTradeStatus(rec.symbol)}
-                      </div>
-                      
-                      {!isTradeConfirmed(rec.symbol) ? (
-                        <div className="space-y-3">
-                          {!manualTradeData[rec.symbol]?.showForm ? (
-                            <Button 
-                              onClick={() => handleToggleManualTradeForm(rec.symbol)}
-                              variant="outline"
-                              className="w-full"
-                              size="sm"
-                            >
-                              Took this trade
-                            </Button>
-                          ) : (
-                            <div className="space-y-3">
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <label className="block text-sm font-medium mb-1">Strike Price</label>
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    placeholder="Strike price"
-                                    value={manualTradeData[rec.symbol]?.strikePrice || ''}
-                                    onChange={(e) => handleManualTradeDataChange(rec.symbol, 'strikePrice', e.target.value)}
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium mb-1">Option Type</label>
-                                  <select 
-                                    className="w-full p-2 border rounded"
-                                    value={manualTradeData[rec.symbol]?.optionType || 'call'}
-                                    onChange={(e) => handleManualTradeDataChange(rec.symbol, 'optionType', e.target.value)}
-                                  >
-                                    <option value="call">Call</option>
-                                    <option value="put">Put</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium mb-1">Target Price</label>
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    placeholder="Target price"
-                                    value={manualTradeData[rec.symbol]?.targetPrice || ''}
-                                    onChange={(e) => handleManualTradeDataChange(rec.symbol, 'targetPrice', e.target.value)}
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium mb-1">Entry Price</label>
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    placeholder="Price paid"
-                                    value={manualTradeData[rec.symbol]?.entryPrice || ''}
-                                    onChange={(e) => handleManualTradeDataChange(rec.symbol, 'entryPrice', e.target.value)}
-                                  />
-                                </div>
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium mb-1">Expiration Date</label>
-                                <Input
-                                  type="text"
-                                  placeholder="e.g., January 15th"
-                                  value={manualTradeData[rec.symbol]?.expirationDate || ''}
-                                  onChange={(e) => handleManualTradeDataChange(rec.symbol, 'expirationDate', e.target.value)}
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium mb-1">Reasoning</label>
-                                <textarea 
-                                  className="w-full p-2 border rounded"
-                                  rows={3}
-                                  placeholder="Why did you take this trade?"
-                                  value={manualTradeData[rec.symbol]?.reasoning || ''}
-                                  onChange={(e) => handleManualTradeDataChange(rec.symbol, 'reasoning', e.target.value)}
-                                />
-                              </div>
-                              <div className="flex gap-2">
-                                <Button 
-                                  onClick={() => handleConfirmManualTrade(rec)}
-                                  className="flex-1"
-                                  size="sm"
-                                >
-                                  Confirm Trade
-                                </Button>
-                                <Button 
-                                  onClick={() => handleToggleManualTradeForm(rec.symbol)}
-                                  variant="outline"
-                                  size="sm"
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="text-center py-2">
-                          <p className="text-sm text-gray-600">
-                            Trade confirmed and being tracked
-                          </p>
-                        </div>
-                      )}
-                    </div>
                   </div>
                 )}
               </CardContent>

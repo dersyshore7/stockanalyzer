@@ -4,7 +4,7 @@ export interface TrackedTrade {
   id: string;
   symbol: string;
   recommendation: {
-    recommendationType: 'Call Option Recommended' | 'Put Option Recommended' | 'No Action Recommended' | 'Manual Trade Entry';
+    recommendationType: 'Call Option Recommended' | 'Put Option Recommended' | 'No Action Recommended';
     action?: {
       strikePrice: number;
       optionType: 'call' | 'put';
