@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { getMultiTimeframeData } from '@/services/alphaVantageApi';
+import { getMultiTimeframeData, generateTechnicalAnalysis } from '@/services/alphaVantageApi';
 import { generateMultiTimeframeCharts, ChartImage } from '@/services/chartGenerator';
 import { useTradeTracking } from '@/hooks/use-trade-tracking';
 import { priceMonitor } from '@/services/priceMonitoring';
@@ -47,6 +47,36 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
   const [entryPrices, setEntryPrices] = useState<Record<string, string>>({});
   const { confirmTrade, getTradeBySymbol, updateTradePrice } = useTradeTracking();
 
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+  const retryWithBackoff = async (
+    fn: () => Promise<string>,
+    maxRetries: number = 3,
+    baseDelay: number = 1000
+  ): Promise<string> => {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (attempt === maxRetries) {
+          throw error;
+        }
+        
+        const isRateLimit = error instanceof Error && 
+          (error.message.includes('rate_limit') || error.message.includes('429'));
+        
+        if (isRateLimit) {
+          const delay = baseDelay * Math.pow(2, attempt - 1);
+          console.log(`Rate limit detected, retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
+          await sleep(delay);
+        } else {
+          throw error;
+        }
+      }
+    }
+    throw new Error('Max retries exceeded');
+  };
+
   const analyzeSymbol = async (symbol: string) => {
     try {
       setRecommendations(prev => [
@@ -58,9 +88,19 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
       const data = await getMultiTimeframeData(symbol);
       const charts = await generateMultiTimeframeCharts(symbol, data);
 
-      const chartDescriptions = charts.map(chart => 
-        `${chart.timeframe} Chart: Generated from OHLCV data`
-      ).join('\n');
+      const technicalAnalysis = [
+        generateTechnicalAnalysis(data.day, 'Day'),
+        generateTechnicalAnalysis(data.week, 'Week'), 
+        generateTechnicalAnalysis(data.month, 'Month'),
+        generateTechnicalAnalysis(data.threeMonth, '3 Month'),
+        generateTechnicalAnalysis(data.sixMonth, '6 Month'),
+        generateTechnicalAnalysis(data.year, 'Year')
+      ].join('\n');
+
+      const chartDescriptions = `Technical Analysis Summary:
+${technicalAnalysis}
+
+Chart Analysis: ${charts.length} candlestick charts generated showing price action, volume, and technical indicators across multiple timeframes.`;
 
       const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
       const dynamicExpirationDate = generateExpirationDate();
@@ -68,20 +108,21 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
 
       if (openaiApiKey && openaiApiKey !== 'YOUR_OPENAI_API_KEY_HERE') {
         try {
-          const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${openaiApiKey}`
-            },
-            body: JSON.stringify({
-              model: 'gpt-4o',
-              messages: [{
-                role: 'user',
-                content: [
-                  {
-                    type: 'text',
-                    text: `Stock: ${symbol}
+          const makeOpenAIRequest = async () => {
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openaiApiKey}`
+              },
+              body: JSON.stringify({
+                model: 'gpt-4o',
+                messages: [{
+                  role: 'user',
+                  content: [
+                    {
+                      type: 'text',
+                      text: `Stock: ${symbol}
 
 Based on the charts provided, analyze the candlestick patterns and provide a recommendation. 
 
@@ -101,75 +142,93 @@ IMPORTANT: Respond with ONLY valid JSON in this exact format (no markdown, no ex
 
 If recommending "No Action Recommended", omit the "action" field entirely.
 
-Your recommendation should be grounded in technical chart patterns and expert-level candlestick analysis. Focus specifically on candlestick patterns like doji, hammer, engulfing patterns, etc. If there is no VERY strong, evidence-based reason to enter a trade based on candlestick patterns, set recommendationType to "No Action Recommended".
+Your recommendation should be grounded in technical analysis including RSI, moving averages, volume analysis, momentum, and candlestick patterns. Look for confluence of multiple technical indicators. If there are clear technical signals from multiple indicators pointing in the same direction, provide a recommendation. If the technical indicators are mixed or neutral, set recommendationType to "No Action Recommended".
 
-Only recommend an action if the candlestick patterns genuinely support it. Provide detailed reasoning explaining which specific candlestick patterns you identified and how they support your recommendation.
+Consider the following for recommendations:
+- RSI overbought (>70) or oversold (<30) conditions
+- Price position relative to moving averages
+- Volume trends and momentum
+- Candlestick patterns (doji, hammer, engulfing, etc.)
+- Overall trend direction across timeframes
 
-Charts provided: ${chartDescriptions}`
-                  },
-                  ...charts.map(chart => ({
-                    type: 'image_url' as const,
-                    image_url: {
-                      url: chart.dataUrl
-                    }
-                  }))
-                ]
-              }],
-              max_tokens: 600,
-              temperature: 0.7
-            })
-          });
+Provide detailed reasoning explaining which specific technical indicators support your recommendation.
 
-          const result = await response.json();
-          
-          if (result.choices && result.choices[0]) {
-            const content = result.choices[0].message.content;
-            console.log('Raw OpenAI response:', content);
-            
-            let jsonContent = content;
-            if (content.includes('```json')) {
-              const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-              if (jsonMatch) {
-                jsonContent = jsonMatch[1];
-              }
-            } else if (content.includes('```')) {
-              const jsonMatch = content.match(/```\s*([\s\S]*?)\s*```/);
-              if (jsonMatch) {
-                jsonContent = jsonMatch[1];
-              }
-            }
-            
-            try {
-              const parsedResponse: OpenAIRecommendationResponse = JSON.parse(jsonContent.trim());
-              console.log('Parsed OpenAI response:', parsedResponse);
-              recommendation = formatRecommendationForDisplay(parsedResponse);
-              console.log('Formatted recommendation:', recommendation);
-              
-              setRecommendations(prev => 
-                prev.map(r => 
-                  r.symbol === symbol 
-                    ? { 
-                        symbol, 
-                        recommendation, 
-                        loading: false,
-                        charts,
-                        parsedRecommendation: parsedResponse
+Technical Data: ${chartDescriptions}`
+                    },
+                    ...charts.map(chart => ({
+                      type: 'image_url' as const,
+                      image_url: {
+                        url: chart.dataUrl
                       }
-                    : r
-                )
-              );
-              return;
-            } catch (jsonError) {
-              console.error('Failed to parse OpenAI JSON response, using raw content:', jsonError);
-              console.error('Content that failed to parse:', jsonContent);
-              recommendation = formatPlainTextResponse(content);
+                    }))
+                  ]
+                }],
+                max_tokens: 600,
+                temperature: 0.7
+              })
+            });
+
+            if (!response.ok) {
+              if (response.status === 429) {
+                throw new Error('rate_limit_exceeded');
+              }
+              throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.choices && result.choices[0]) {
+              const content = result.choices[0].message.content;
+              console.log('Raw OpenAI response:', content);
+              
+              let jsonContent = content;
+              if (content.includes('```json')) {
+                const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+                if (jsonMatch) {
+                  jsonContent = jsonMatch[1];
+                }
+              } else if (content.includes('```')) {
+                const jsonMatch = content.match(/```\s*([\s\S]*?)\s*```/);
+                if (jsonMatch) {
+                  jsonContent = jsonMatch[1];
+                }
+              }
+              
+              try {
+                const parsedResponse: OpenAIRecommendationResponse = JSON.parse(jsonContent.trim());
+                console.log('Parsed OpenAI response:', parsedResponse);
+                const formattedRecommendation = formatRecommendationForDisplay(parsedResponse);
+                console.log('Formatted recommendation:', formattedRecommendation);
+                return formattedRecommendation;
+              } catch (jsonError) {
+                console.error('Failed to parse OpenAI JSON response, using raw content:', jsonError);
+                console.error('Content that failed to parse:', jsonContent);
+                return formatPlainTextResponse(content);
+              }
+            } else {
+              throw new Error('Invalid response from OpenAI');
+            }
+          };
+
+          recommendation = await retryWithBackoff(makeOpenAIRequest, 3, 2000);
+
+        } catch (openaiError) {
+          console.error('OpenAI API failed after retries:', openaiError);
+          
+          if (openaiError instanceof Error) {
+            if (openaiError.message.includes('rate_limit')) {
+              console.error('Rate limit exceeded for OpenAI API');
+              recommendation = generateRateLimitAnalysis(data, charts);
+            } else if (openaiError.message.includes('invalid_api_key')) {
+              console.error('Invalid OpenAI API key');
+              recommendation = generateDemoAnalysis(symbol, charts);
+            } else {
+              console.error('OpenAI API error:', openaiError.message);
+              recommendation = generateTechnicalFallbackAnalysis(data, charts);
             }
           } else {
-            throw new Error('Invalid response from OpenAI');
+            recommendation = generateTechnicalFallbackAnalysis(data, charts);
           }
-        } catch (openaiError) {
-          console.error('OpenAI API failed, using demo analysis:', openaiError);
-          recommendation = generateDemoAnalysis(symbol, charts);
         }
       } else {
         console.log('No OpenAI API key provided, using demo analysis');
@@ -271,6 +330,58 @@ To get actual AI-powered options trading recommendations:
 The technical infrastructure is working correctly and ready for AI-powered analysis once an API key is provided.`;
   };
 
+  const generateRateLimitAnalysis = (data: any, charts: ChartImage[]): string => {
+    return `📊 TECHNICAL ANALYSIS (RATE LIMITED)
+
+⚠️ OpenAI API rate limit exceeded. Providing technical analysis based on calculated indicators.
+
+${generateTechnicalFallbackContent(data, charts)}
+
+🔄 Please wait a few minutes before trying again for AI-powered analysis.`;
+  };
+
+  const generateTechnicalFallbackAnalysis = (data: any, charts: ChartImage[]): string => {
+    return `📊 TECHNICAL ANALYSIS (FALLBACK MODE)
+
+⚠️ AI analysis temporarily unavailable. Providing technical analysis based on calculated indicators.
+
+${generateTechnicalFallbackContent(data, charts)}
+
+🔄 Technical analysis is based on RSI, moving averages, volume, and momentum indicators.`;
+  };
+
+  const generateTechnicalFallbackContent = (data: any, charts: ChartImage[]): string => {
+    const timeframes = charts.map(c => c.timeframe).join(', ');
+    
+    const technicalSummary = [
+      generateTechnicalAnalysis(data.day, 'Day'),
+      generateTechnicalAnalysis(data.week, 'Week'),
+      generateTechnicalAnalysis(data.month, 'Month'),
+      generateTechnicalAnalysis(data.threeMonth, '3 Month'),
+      generateTechnicalAnalysis(data.sixMonth, '6 Month'),
+      generateTechnicalAnalysis(data.year, 'Year')
+    ].join('\n');
+
+    return `📈 Technical Analysis Summary:
+${technicalSummary}
+
+🔍 Key Indicators Analysis:
+- RSI levels indicate overbought/oversold conditions
+- Moving average positions show trend direction
+- Volume analysis reveals market interest
+- Momentum calculations show price velocity
+
+💡 Recommendation Logic:
+- Look for RSI extremes (>70 overbought, <30 oversold)
+- Consider price position relative to moving averages
+- Analyze volume trends for confirmation
+- Multiple timeframe confluence increases signal strength
+
+📋 Charts Generated: ${timeframes}
+✅ Data Source: Real market data via Yahoo Finance/Alpha Vantage
+✅ Technical Indicators: RSI, SMA, Volume, Momentum calculated`;
+  };
+
   const analyzeAllSymbols = async () => {
     setIsAnalyzing(true);
     setRecommendations([]);
@@ -280,7 +391,8 @@ The technical infrastructure is working correctly and ready for AI-powered analy
       await analyzeSymbol(symbols[i]);
       
       if (i < symbols.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 12000));
+        console.log(`Waiting 3 seconds before analyzing next stock to prevent rate limiting...`);
+        await sleep(3000);
       }
     }
     
