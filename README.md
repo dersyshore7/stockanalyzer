@@ -1,6 +1,9 @@
-# React + TypeScript + Vite
+# Stock Analyzer - React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+
+## About Stock Analyzer
+A modern stock analysis application built with React, TypeScript, and Vite.
 
 Currently, two official plugins are available:
 
