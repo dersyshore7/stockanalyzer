@@ -2,14 +2,19 @@ import { useState } from 'react';
 import { addWeeks, format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { getMultiTimeframeData, generateTechnicalAnalysis } from '@/services/alphaVantageApi';
 import { generateMultiTimeframeCharts, ChartImage } from '@/services/chartGenerator';
+import { useTradeTracking } from '@/hooks/use-trade-tracking';
+import { priceMonitor } from '@/services/priceMonitoring';
 
 interface OptionsRecommendation {
   symbol: string;
   recommendation: string;
   loading: boolean;
   charts?: ChartImage[];
+  parsedRecommendation?: OpenAIRecommendationResponse;
 }
 
 interface OpenAIRecommendationResponse {
@@ -39,6 +44,8 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
   const [recommendations, setRecommendations] = useState<OptionsRecommendation[]>([]);
   const [currentSymbolIndex, setCurrentSymbolIndex] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [entryPrices, setEntryPrices] = useState<Record<string, string>>({});
+  const { confirmTrade, getTradeBySymbol, updateTradePrice } = useTradeTracking();
 
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -235,7 +242,8 @@ Technical Data: ${chartDescriptions}`
                 symbol, 
                 recommendation, 
                 loading: false,
-                charts 
+                charts,
+                parsedRecommendation: undefined
               }
             : r
         )
@@ -395,6 +403,61 @@ ${technicalSummary}
     setRecommendations(prev => prev.filter(r => r.symbol !== symbol));
   };
 
+  const handleConfirmTrade = async (rec: OptionsRecommendation) => {
+    if (!rec.parsedRecommendation || rec.parsedRecommendation.recommendationType === 'No Action Recommended') {
+      return;
+    }
+
+    const entryPriceStr = entryPrices[rec.symbol];
+    const entryPrice = entryPriceStr ? parseFloat(entryPriceStr) : undefined;
+
+    const tradeId = confirmTrade(rec.symbol, rec.parsedRecommendation, entryPrice);
+
+    if (entryPrice) {
+      const currentPrice = await priceMonitor.getCurrentPrice(rec.symbol);
+      if (currentPrice !== null) {
+        updateTradePrice(tradeId, currentPrice, entryPrice);
+      }
+    }
+
+    setEntryPrices(prev => ({ ...prev, [rec.symbol]: '' }));
+  };
+
+  const handleEntryPriceChange = (symbol: string, value: string) => {
+    setEntryPrices(prev => ({ ...prev, [symbol]: value }));
+  };
+
+  const isTradeConfirmed = (symbol: string) => {
+    const existingTrade = getTradeBySymbol(symbol);
+    return existingTrade !== undefined;
+  };
+
+  const getTradeStatus = (symbol: string) => {
+    const existingTrade = getTradeBySymbol(symbol);
+    if (!existingTrade) return null;
+
+    switch (existingTrade.status) {
+      case 'pending':
+        return <Badge variant="secondary">Trade Pending Entry</Badge>;
+      case 'confirmed':
+        return (
+          <div className="flex gap-2">
+            <Badge variant="default">Trade Active</Badge>
+            {existingTrade.pnl !== undefined && (
+              <Badge variant={existingTrade.pnl >= 0 ? "default" : "destructive"}>
+                {existingTrade.pnl >= 0 ? '+' : ''}${existingTrade.pnl.toFixed(2)} 
+                ({existingTrade.pnlPercentage?.toFixed(1)}%)
+              </Badge>
+            )}
+          </div>
+        );
+      case 'closed':
+        return <Badge variant="outline">Trade Closed</Badge>;
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 p-4">
       <div className="max-w-7xl mx-auto">
@@ -469,9 +532,52 @@ ${technicalSummary}
                         </div>
                       </div>
                     )}
-                    <div className="text-gray-700 whitespace-pre-wrap">
+                    <div className="text-gray-700 whitespace-pre-wrap mb-4">
                       {rec.recommendation}
                     </div>
+                    
+                    {rec.parsedRecommendation && rec.parsedRecommendation.recommendationType !== 'No Action Recommended' && (
+                      <div className="border-t pt-4">
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="font-semibold">Paper Trade Tracking</h4>
+                          {getTradeStatus(rec.symbol)}
+                        </div>
+                        
+                        {!isTradeConfirmed(rec.symbol) ? (
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-sm font-medium mb-1">
+                                Entry Price (optional)
+                              </label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="Enter option price paid"
+                                value={entryPrices[rec.symbol] || ''}
+                                onChange={(e) => handleEntryPriceChange(rec.symbol, e.target.value)}
+                                className="w-full"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">
+                                Leave empty to track without P&L calculation
+                              </p>
+                            </div>
+                            <Button 
+                              onClick={() => handleConfirmTrade(rec)}
+                              className="w-full"
+                              size="sm"
+                            >
+                              Confirm Trade
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="text-center py-2">
+                            <p className="text-sm text-gray-600">
+                              Trade confirmed and being tracked
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
