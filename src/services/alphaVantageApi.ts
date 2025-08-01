@@ -40,6 +40,7 @@ export interface ProcessedDataPoint {
 const API_KEY = import.meta.env.VITE_ALPHA_VANTAGE_API_KEY || 'demo';
 const BASE_URL = 'https://www.alphavantage.co/query';
 
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 const YAHOO_BASE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
 
 export const fetchDailyData = async (symbol: string): Promise<ProcessedDataPoint[]> => {
@@ -137,11 +138,12 @@ const processTimeSeriesData = (data: TimeSeriesData): ProcessedDataPoint[] => {
 
 const fetchYahooFinanceData = async (symbol: string): Promise<ProcessedDataPoint[]> => {
   try {
-    const response = await fetch(`${YAHOO_BASE_URL}/${symbol}?period1=0&period2=9999999999&interval=1d&includePrePost=true&events=div%2Csplit`);
+    const yahooUrl = `${YAHOO_BASE_URL}/${symbol}?period1=0&period2=9999999999&interval=1d&includePrePost=true&events=div%2Csplit`;
+    const response = await fetch(`${CORS_PROXY}${encodeURIComponent(yahooUrl)}`);
     const data = await response.json();
     
     if (!data.chart?.result?.[0]?.timestamp) {
-      throw new Error('Invalid Yahoo Finance response');
+      throw new Error('Invalid Yahoo Finance response via CORS proxy');
     }
     
     const result = data.chart.result[0];
@@ -157,8 +159,8 @@ const fetchYahooFinanceData = async (symbol: string): Promise<ProcessedDataPoint
       volume: quotes.volume[index] || 0
     })).filter((point: ProcessedDataPoint) => point.close > 0);
   } catch (error) {
-    console.error('Yahoo Finance API error:', error);
-    throw new Error('Failed to fetch data from Yahoo Finance');
+    console.error('Yahoo Finance CORS proxy error:', error);
+    throw new Error('Failed to fetch data from Yahoo Finance via CORS proxy');
   }
 };
 
@@ -210,7 +212,7 @@ export const getMultiTimeframeData = async (symbol: string) => {
         year: yahooData.filter(d => new Date(d.date) >= oneYearAgo)
       };
     } catch (fallbackError) {
-      console.error('Yahoo Finance fallback also failed:', fallbackError);
+      console.error('Yahoo Finance CORS proxy fallback also failed:', fallbackError);
       throw new Error('Unable to fetch stock data from any source. Please check the symbol and try again.');
     }
   }
