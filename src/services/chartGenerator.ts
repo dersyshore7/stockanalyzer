@@ -1,8 +1,9 @@
-import { Chart, ChartConfiguration, registerables, ScatterDataPoint } from 'chart.js';
+import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import 'chartjs-adapter-date-fns';
+import { CandlestickController, CandlestickElement, OhlcController, OhlcElement } from 'chartjs-chart-financial';
 import { ProcessedDataPoint } from './alphaVantageApi';
 
-Chart.register(...registerables);
+Chart.register(...registerables, CandlestickController, CandlestickElement, OhlcController, OhlcElement);
 
 export interface ChartImage {
   timeframe: string;
@@ -25,21 +26,20 @@ export const generateCandlestickChart = async (
       return;
     }
 
-    const chartData: ScatterDataPoint[] = data.map(point => ({
+    const chartData = data.map(point => ({
       x: new Date(point.date).getTime(),
-      y: point.close
+      o: point.open,
+      h: point.high,
+      l: point.low,
+      c: point.close
     }));
 
-    const config: ChartConfiguration<'line', ScatterDataPoint[]> = {
-      type: 'line',
+    const config: ChartConfiguration<'candlestick', { x: number; o: number; h: number; l: number; c: number }[]> = {
+      type: 'candlestick',
       data: {
         datasets: [{
           label: `${symbol} - ${timeframe}`,
-          data: chartData,
-          borderColor: 'rgb(75, 192, 192)',
-          backgroundColor: 'rgba(75, 192, 192, 0.2)',
-          fill: false,
-          tension: 0.1
+          data: chartData
         }]
       },
       options: {
