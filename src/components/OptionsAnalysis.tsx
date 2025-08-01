@@ -40,6 +40,7 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
         { symbol, recommendation: '', loading: true }
       ]);
 
+
       const data = await getMultiTimeframeData(symbol);
       const charts = await generateMultiTimeframeCharts(symbol, data);
 
@@ -67,7 +68,9 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
                     type: 'text',
                     text: `Stock: ${symbol}
 
-Based on the charts provided, analyze the candlestick patterns and provide a recommendation in the following JSON format:
+Based on the charts provided, analyze the candlestick patterns and provide a recommendation. 
+
+IMPORTANT: Respond with ONLY valid JSON in this exact format (no markdown, no extra text):
 
 {
   "recommendationType": "Call Option Recommended" | "Put Option Recommended" | "No Action Recommended",
@@ -81,7 +84,9 @@ Based on the charts provided, analyze the candlestick patterns and provide a rec
   "reasoning": "Detailed explanation based on candlestick patterns"
 }
 
-Your recommendation should be grounded in technical chart patterns and expert-level candlestick analysis. Focus specifically on candlestick patterns like doji, hammer, engulfing patterns, etc. If there is no VERY strong, evidence-based reason to enter a trade based on candlestick patterns, set recommendationType to "No Action Recommended" and omit the action field.
+If recommending "No Action Recommended", omit the "action" field entirely.
+
+Your recommendation should be grounded in technical chart patterns and expert-level candlestick analysis. Focus specifically on candlestick patterns like doji, hammer, engulfing patterns, etc. If there is no VERY strong, evidence-based reason to enter a trade based on candlestick patterns, set recommendationType to "No Action Recommended".
 
 Only recommend an action if the candlestick patterns genuinely support it. Provide detailed reasoning explaining which specific candlestick patterns you identified and how they support your recommendation.
 
@@ -104,12 +109,30 @@ Charts provided: ${chartDescriptions}`
           
           if (result.choices && result.choices[0]) {
             const content = result.choices[0].message.content;
+            console.log('Raw OpenAI response:', content);
+            
+            let jsonContent = content;
+            if (content.includes('```json')) {
+              const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+              if (jsonMatch) {
+                jsonContent = jsonMatch[1];
+              }
+            } else if (content.includes('```')) {
+              const jsonMatch = content.match(/```\s*([\s\S]*?)\s*```/);
+              if (jsonMatch) {
+                jsonContent = jsonMatch[1];
+              }
+            }
+            
             try {
-              const parsedResponse: OpenAIRecommendationResponse = JSON.parse(content);
+              const parsedResponse: OpenAIRecommendationResponse = JSON.parse(jsonContent.trim());
+              console.log('Parsed OpenAI response:', parsedResponse);
               recommendation = formatRecommendationForDisplay(parsedResponse);
+              console.log('Formatted recommendation:', recommendation);
             } catch (jsonError) {
               console.error('Failed to parse OpenAI JSON response, using raw content:', jsonError);
-              recommendation = content;
+              console.error('Content that failed to parse:', jsonContent);
+              recommendation = formatPlainTextResponse(content);
             }
           } else {
             throw new Error('Invalid response from OpenAI');
@@ -164,6 +187,16 @@ Charts provided: ${chartDescriptions}`
     formatted += `🔍 Candlestick Pattern Analysis:\n${response.reasoning}`;
     
     return formatted;
+  };
+
+  const formatPlainTextResponse = (content: string): string => {
+    if (content.includes('Call Option Recommended') || 
+        content.includes('Put Option Recommended') || 
+        content.includes('No Action Recommended')) {
+      return content;
+    }
+    
+    return `📊 ANALYSIS RESULT\n\n${content}`;
   };
 
   const generateDemoAnalysis = (symbol: string, charts: ChartImage[]): string => {
