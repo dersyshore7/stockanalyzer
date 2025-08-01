@@ -9,7 +9,7 @@ export interface TimeSeriesData {
 }
 
 export interface AlphaVantageResponse {
-  'Meta Data': {
+  'Meta Data'?: {
     '1. Information': string;
     '2. Symbol': string;
     '3. Last Refreshed': string;
@@ -24,6 +24,8 @@ export interface AlphaVantageResponse {
   'Time Series (15min)'?: TimeSeriesData;
   'Time Series (30min)'?: TimeSeriesData;
   'Time Series (60min)'?: TimeSeriesData;
+  'Error Message'?: string;
+  'Note'?: string;
 }
 
 export interface ProcessedDataPoint {
@@ -42,8 +44,19 @@ export const fetchDailyData = async (symbol: string): Promise<ProcessedDataPoint
   const response = await fetch(`${BASE_URL}?function=TIME_SERIES_DAILY&symbol=${symbol}&apikey=${API_KEY}`);
   const data: AlphaVantageResponse = await response.json();
   
+  if (data['Error Message']) {
+    throw new Error(`Alpha Vantage API Error: ${data['Error Message']}`);
+  }
+  
+  if (data['Note']) {
+    throw new Error('API rate limit exceeded. Please wait or upgrade your Alpha Vantage API key.');
+  }
+  
   if (!data['Time Series (Daily)']) {
-    throw new Error('Failed to fetch daily data');
+    if (API_KEY === 'demo') {
+      throw new Error('Demo API key has limited access. Please provide a valid Alpha Vantage API key.');
+    }
+    throw new Error('Failed to fetch daily data - please check the stock symbol and try again.');
   }
   
   return processTimeSeriesData(data['Time Series (Daily)']);
@@ -53,8 +66,19 @@ export const fetchWeeklyData = async (symbol: string): Promise<ProcessedDataPoin
   const response = await fetch(`${BASE_URL}?function=TIME_SERIES_WEEKLY&symbol=${symbol}&apikey=${API_KEY}`);
   const data: AlphaVantageResponse = await response.json();
   
+  if (data['Error Message']) {
+    throw new Error(`Alpha Vantage API Error: ${data['Error Message']}`);
+  }
+  
+  if (data['Note']) {
+    throw new Error('API rate limit exceeded. Please wait or upgrade your Alpha Vantage API key.');
+  }
+  
   if (!data['Weekly Time Series']) {
-    throw new Error('Failed to fetch weekly data');
+    if (API_KEY === 'demo') {
+      throw new Error('Demo API key has limited access. Please provide a valid Alpha Vantage API key.');
+    }
+    throw new Error('Failed to fetch weekly data - please check the stock symbol and try again.');
   }
   
   return processTimeSeriesData(data['Weekly Time Series']);
@@ -64,8 +88,19 @@ export const fetchMonthlyData = async (symbol: string): Promise<ProcessedDataPoi
   const response = await fetch(`${BASE_URL}?function=TIME_SERIES_MONTHLY&symbol=${symbol}&apikey=${API_KEY}`);
   const data: AlphaVantageResponse = await response.json();
   
+  if (data['Error Message']) {
+    throw new Error(`Alpha Vantage API Error: ${data['Error Message']}`);
+  }
+  
+  if (data['Note']) {
+    throw new Error('API rate limit exceeded. Please wait or upgrade your Alpha Vantage API key.');
+  }
+  
   if (!data['Monthly Time Series']) {
-    throw new Error('Failed to fetch monthly data');
+    if (API_KEY === 'demo') {
+      throw new Error('Demo API key has limited access. Please provide a valid Alpha Vantage API key.');
+    }
+    throw new Error('Failed to fetch monthly data - please check the stock symbol and try again.');
   }
   
   return processTimeSeriesData(data['Monthly Time Series']);
