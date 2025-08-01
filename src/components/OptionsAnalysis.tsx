@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { addWeeks, format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getMultiTimeframeData } from '@/services/alphaVantageApi';
@@ -28,6 +29,12 @@ interface OptionsAnalysisProps {
   onBack: () => void;
 }
 
+const generateExpirationDate = (): string => {
+  const currentDate = new Date();
+  const futureDate = addWeeks(currentDate, 3);
+  return format(futureDate, 'MMMM do');
+};
+
 export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
   const [recommendations, setRecommendations] = useState<OptionsRecommendation[]>([]);
   const [currentSymbolIndex, setCurrentSymbolIndex] = useState(0);
@@ -49,6 +56,7 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
       ).join('\n');
 
       const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
+      const dynamicExpirationDate = generateExpirationDate();
       let recommendation = '';
 
       if (openaiApiKey && openaiApiKey !== 'YOUR_OPENAI_API_KEY_HERE') {
@@ -79,7 +87,7 @@ IMPORTANT: Respond with ONLY valid JSON in this exact format (no markdown, no ex
     "optionType": "call" | "put", 
     "targetPrice": number,
     "priceType": "bid" | "ask",
-    "expirationDate": "July 25th"
+    "expirationDate": "${dynamicExpirationDate}"
   },
   "reasoning": "Detailed explanation based on candlestick patterns"
 }
