@@ -11,6 +11,18 @@ interface OptionsRecommendation {
   charts?: ChartImage[];
 }
 
+interface OpenAIRecommendationResponse {
+  recommendationType: 'Call Option Recommended' | 'Put Option Recommended' | 'No Action Recommended';
+  action?: {
+    strikePrice: number;
+    optionType: 'call' | 'put';
+    targetPrice: number;
+    priceType: 'bid' | 'ask';
+    expirationDate: string;
+  };
+  reasoning: string;
+}
+
 interface OptionsAnalysisProps {
   symbols: string[];
   onBack: () => void;
@@ -27,6 +39,7 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
         ...prev.filter(r => r.symbol !== symbol),
         { symbol, recommendation: '', loading: true }
       ]);
+
 
       const data = await getMultiTimeframeData(symbol);
       const charts = await generateMultiTimeframeCharts(symbol, data);
@@ -55,19 +68,27 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
                     type: 'text',
                     text: `Stock: ${symbol}
 
-Based on the charts provided, please analyze and recommend whether I should purchase a call or put option for the July 25th expiration. Be sure to analyze each of the photos provided. If you do recommend a trade, specify:
+Based on the charts provided, analyze the candlestick patterns and provide a recommendation. 
 
-The strike price
+IMPORTANT: Respond with ONLY valid JSON in this exact format (no markdown, no extra text):
 
-Whether to buy at the bid or ask price
+{
+  "recommendationType": "Call Option Recommended" | "Put Option Recommended" | "No Action Recommended",
+  "action": {
+    "strikePrice": number,
+    "optionType": "call" | "put", 
+    "targetPrice": number,
+    "priceType": "bid" | "ask",
+    "expirationDate": "July 25th"
+  },
+  "reasoning": "Detailed explanation based on candlestick patterns"
+}
 
-The exact price to target
+If recommending "No Action Recommended", omit the "action" field entirely.
 
-For example: "For July 25th, buy at the strike price of $170, for the Asking price of $3.75"
+Your recommendation should be grounded in technical chart patterns and expert-level candlestick analysis. Focus specifically on candlestick patterns like doji, hammer, engulfing patterns, etc. If there is no VERY strong, evidence-based reason to enter a trade based on candlestick patterns, set recommendationType to "No Action Recommended".
 
-Your recommendation should be grounded in technical chart patterns and expert-level analysis. If there is no VERY strong, evidence-based reason to enter a trade, clearly say so. Do not suggest an action unless the technical indicators, and specifically the chart/candle patterns genuinely support it.
-
-Please explain your reasoning in detail.
+Only recommend an action if the candlestick patterns genuinely support it. Provide detailed reasoning explaining which specific candlestick patterns you identified and how they support your recommendation.
 
 Charts provided: ${chartDescriptions}`
                   },
@@ -87,7 +108,32 @@ Charts provided: ${chartDescriptions}`
           const result = await response.json();
           
           if (result.choices && result.choices[0]) {
-            recommendation = result.choices[0].message.content;
+            const content = result.choices[0].message.content;
+            console.log('Raw OpenAI response:', content);
+            
+            let jsonContent = content;
+            if (content.includes('```json')) {
+              const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+              if (jsonMatch) {
+                jsonContent = jsonMatch[1];
+              }
+            } else if (content.includes('```')) {
+              const jsonMatch = content.match(/```\s*([\s\S]*?)\s*```/);
+              if (jsonMatch) {
+                jsonContent = jsonMatch[1];
+              }
+            }
+            
+            try {
+              const parsedResponse: OpenAIRecommendationResponse = JSON.parse(jsonContent.trim());
+              console.log('Parsed OpenAI response:', parsedResponse);
+              recommendation = formatRecommendationForDisplay(parsedResponse);
+              console.log('Formatted recommendation:', recommendation);
+            } catch (jsonError) {
+              console.error('Failed to parse OpenAI JSON response, using raw content:', jsonError);
+              console.error('Content that failed to parse:', jsonContent);
+              recommendation = formatPlainTextResponse(content);
+            }
           } else {
             throw new Error('Invalid response from OpenAI');
           }
@@ -128,20 +174,50 @@ Charts provided: ${chartDescriptions}`
     }
   };
 
+  const formatRecommendationForDisplay = (response: OpenAIRecommendationResponse): string => {
+    let formatted = `📊 ${response.recommendationType.toUpperCase()}\n\n`;
+    
+    if (response.action && response.recommendationType !== 'No Action Recommended') {
+      formatted += `💡 Recommended Action:\n`;
+      formatted += `Purchase (paper) ${response.action.optionType.toUpperCase()} Option at Strike Price of $${response.action.strikePrice}\n`;
+      formatted += `Target ${response.action.priceType === 'bid' ? 'Bid' : 'Ask'} price: $${response.action.targetPrice}\n`;
+      formatted += `Expiration: ${response.action.expirationDate}\n\n`;
+    }
+    
+    formatted += `🔍 Candlestick Pattern Analysis:\n${response.reasoning}`;
+    
+    return formatted;
+  };
+
+  const formatPlainTextResponse = (content: string): string => {
+    if (content.includes('Call Option Recommended') || 
+        content.includes('Put Option Recommended') || 
+        content.includes('No Action Recommended')) {
+      return content;
+    }
+    
+    return `📊 ANALYSIS RESULT\n\n${content}`;
+  };
+
   const generateDemoAnalysis = (symbol: string, charts: ChartImage[]): string => {
     const timeframes = charts.map(c => c.timeframe).join(', ');
     
-    return `📊 DEMO ANALYSIS for ${symbol}
+    return `📊 NO ACTION RECOMMENDED (DEMO MODE)
 
 ⚠️ This is a demonstration analysis since no OpenAI API key is configured. For real trading recommendations, please add your OpenAI API key to the environment variables.
 
 📈 Technical Analysis Summary:
 Based on the generated charts for timeframes: ${timeframes}
 
-🔍 Chart Pattern Analysis:
+🔍 Candlestick Pattern Analysis:
 - Multiple timeframe analysis shows price action across different periods
 - Charts have been successfully generated from real market data via Yahoo Finance API
-- Technical indicators would typically be analyzed for trend direction, support/resistance levels, and momentum
+- For actual candlestick pattern analysis, the system would analyze patterns like:
+  • Doji patterns (indecision)
+  • Hammer/Hanging man (reversal signals)
+  • Engulfing patterns (trend continuation/reversal)
+  • Morning/Evening star formations
+  • Support and resistance levels
 
 💡 Demo Recommendation:
 This demo system has successfully:
@@ -154,7 +230,7 @@ This demo system has successfully:
 To get actual AI-powered options trading recommendations:
 1. Add your OpenAI API key to environment variables
 2. The system will then analyze the generated charts using GPT-4 Vision
-3. Receive detailed technical analysis and specific options trading recommendations
+3. Receive detailed technical analysis and specific options trading recommendations in structured JSON format
 
 📋 System Status:
 - Data Source: ✅ Yahoo Finance (via CORS proxy)
