@@ -286,3 +286,105 @@ const generateMonthlyFromDaily = (dailyData: ProcessedDataPoint[]): ProcessedDat
   
   return monthlyData;
 };
+
+export const calculateRSI = (data: ProcessedDataPoint[], period: number = 14): number => {
+  if (data.length < period + 1) return 50;
+  
+  const prices = data.slice(-period - 1);
+  let gains = 0;
+  let losses = 0;
+  
+  for (let i = 1; i < prices.length; i++) {
+    const change = prices[i].close - prices[i - 1].close;
+    if (change > 0) {
+      gains += change;
+    } else {
+      losses += Math.abs(change);
+    }
+  }
+  
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  
+  if (avgLoss === 0) return 100;
+  
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
+};
+
+export const calculateSMA = (data: ProcessedDataPoint[], period: number): number => {
+  if (data.length < period) return data[data.length - 1]?.close || 0;
+  
+  const prices = data.slice(-period);
+  const sum = prices.reduce((acc, point) => acc + point.close, 0);
+  return sum / period;
+};
+
+export const calculateVolumeAnalysis = (data: ProcessedDataPoint[]): {
+  avgVolume: number;
+  recentVolume: number;
+  volumeTrend: string;
+} => {
+  if (data.length < 10) {
+    return {
+      avgVolume: 0,
+      recentVolume: 0,
+      volumeTrend: 'insufficient data'
+    };
+  }
+  
+  const avgVolume = data.reduce((acc, point) => acc + point.volume, 0) / data.length;
+  const recentVolume = data[data.length - 1].volume;
+  const volumeTrend = recentVolume > avgVolume * 1.5 ? 'high' : 
+                     recentVolume < avgVolume * 0.5 ? 'low' : 'normal';
+  
+  return { avgVolume, recentVolume, volumeTrend };
+};
+
+export const calculateTrendDirection = (data: ProcessedDataPoint[]): {
+  shortTrend: string;
+  mediumTrend: string;
+  momentum: number;
+} => {
+  if (data.length < 20) {
+    return {
+      shortTrend: 'insufficient data',
+      mediumTrend: 'insufficient data',
+      momentum: 0
+    };
+  }
+  
+  const recent = data.slice(-5);
+  const medium = data.slice(-20);
+  
+  const recentChange = (recent[recent.length - 1].close - recent[0].close) / recent[0].close * 100;
+  const mediumChange = (medium[medium.length - 1].close - medium[0].close) / medium[0].close * 100;
+  
+  const shortTrend = recentChange > 2 ? 'bullish' : recentChange < -2 ? 'bearish' : 'sideways';
+  const mediumTrend = mediumChange > 5 ? 'bullish' : mediumChange < -5 ? 'bearish' : 'sideways';
+  
+  return {
+    shortTrend,
+    mediumTrend,
+    momentum: recentChange
+  };
+};
+
+export const generateTechnicalAnalysis = (data: ProcessedDataPoint[], timeframe: string): string => {
+  if (data.length < 20) {
+    return `${timeframe}: Insufficient data for technical analysis`;
+  }
+  
+  const rsi = calculateRSI(data);
+  const sma20 = calculateSMA(data, 20);
+  const sma50 = calculateSMA(data, Math.min(50, data.length));
+  const currentPrice = data[data.length - 1].close;
+  const volumeAnalysis = calculateVolumeAnalysis(data);
+  const trendAnalysis = calculateTrendDirection(data);
+  
+  const rsiSignal = rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : 'neutral';
+  const smaSignal = currentPrice > sma20 ? 'above SMA20' : 'below SMA20';
+  const trendSignal = sma20 > sma50 ? 'uptrend' : 'downtrend';
+  
+  return `${timeframe}: Price $${currentPrice.toFixed(2)}, RSI ${rsi.toFixed(1)} (${rsiSignal}), ${smaSignal}, ${trendSignal}, Volume ${volumeAnalysis.volumeTrend}, Momentum ${trendAnalysis.momentum.toFixed(1)}%`;
+};

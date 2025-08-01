@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { addWeeks, format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { getMultiTimeframeData } from '@/services/alphaVantageApi';
+import { getMultiTimeframeData, generateTechnicalAnalysis } from '@/services/alphaVantageApi';
 import { generateMultiTimeframeCharts, ChartImage } from '@/services/chartGenerator';
 
 interface OptionsRecommendation {
@@ -51,9 +51,19 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
       const data = await getMultiTimeframeData(symbol);
       const charts = await generateMultiTimeframeCharts(symbol, data);
 
-      const chartDescriptions = charts.map(chart => 
-        `${chart.timeframe} Chart: Generated from OHLCV data`
-      ).join('\n');
+      const technicalAnalysis = [
+        generateTechnicalAnalysis(data.day, 'Day'),
+        generateTechnicalAnalysis(data.week, 'Week'), 
+        generateTechnicalAnalysis(data.month, 'Month'),
+        generateTechnicalAnalysis(data.threeMonth, '3 Month'),
+        generateTechnicalAnalysis(data.sixMonth, '6 Month'),
+        generateTechnicalAnalysis(data.year, 'Year')
+      ].join('\n');
+
+      const chartDescriptions = `Technical Analysis Summary:
+${technicalAnalysis}
+
+Chart Analysis: ${charts.length} candlestick charts generated showing price action, volume, and technical indicators across multiple timeframes.`;
 
       const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
       const dynamicExpirationDate = generateExpirationDate();
@@ -94,11 +104,18 @@ IMPORTANT: Respond with ONLY valid JSON in this exact format (no markdown, no ex
 
 If recommending "No Action Recommended", omit the "action" field entirely.
 
-Your recommendation should be grounded in technical chart patterns and expert-level candlestick analysis. Focus specifically on candlestick patterns like doji, hammer, engulfing patterns, etc. If there is no VERY strong, evidence-based reason to enter a trade based on candlestick patterns, set recommendationType to "No Action Recommended".
+Your recommendation should be grounded in technical analysis including RSI, moving averages, volume analysis, momentum, and candlestick patterns. Look for confluence of multiple technical indicators. If there are clear technical signals from multiple indicators pointing in the same direction, provide a recommendation. If the technical indicators are mixed or neutral, set recommendationType to "No Action Recommended".
 
-Only recommend an action if the candlestick patterns genuinely support it. Provide detailed reasoning explaining which specific candlestick patterns you identified and how they support your recommendation.
+Consider the following for recommendations:
+- RSI overbought (>70) or oversold (<30) conditions
+- Price position relative to moving averages
+- Volume trends and momentum
+- Candlestick patterns (doji, hammer, engulfing, etc.)
+- Overall trend direction across timeframes
 
-Charts provided: ${chartDescriptions}`
+Provide detailed reasoning explaining which specific technical indicators support your recommendation.
+
+Technical Data: ${chartDescriptions}`
                   },
                   ...charts.map(chart => ({
                     type: 'image_url' as const,
@@ -146,8 +163,22 @@ Charts provided: ${chartDescriptions}`
             throw new Error('Invalid response from OpenAI');
           }
         } catch (openaiError) {
-          console.error('OpenAI API failed, using demo analysis:', openaiError);
-          recommendation = generateDemoAnalysis(symbol, charts);
+          console.error('OpenAI API failed:', openaiError);
+          
+          if (openaiError instanceof Error) {
+            if (openaiError.message.includes('rate_limit')) {
+              console.error('Rate limit exceeded for OpenAI API');
+              recommendation = generateRateLimitAnalysis(symbol, data, charts);
+            } else if (openaiError.message.includes('invalid_api_key')) {
+              console.error('Invalid OpenAI API key');
+              recommendation = generateDemoAnalysis(symbol, charts);
+            } else {
+              console.error('OpenAI API error:', openaiError.message);
+              recommendation = generateTechnicalFallbackAnalysis(symbol, data, charts);
+            }
+          } else {
+            recommendation = generateTechnicalFallbackAnalysis(symbol, data, charts);
+          }
         }
       } else {
         console.log('No OpenAI API key provided, using demo analysis');
@@ -246,6 +277,58 @@ To get actual AI-powered options trading recommendations:
 - AI Analysis: ⏳ Requires OpenAI API key for full functionality
 
 The technical infrastructure is working correctly and ready for AI-powered analysis once an API key is provided.`;
+  };
+
+  const generateRateLimitAnalysis = (symbol: string, data: any, charts: ChartImage[]): string => {
+    return `📊 TECHNICAL ANALYSIS (RATE LIMITED)
+
+⚠️ OpenAI API rate limit exceeded. Providing technical analysis based on calculated indicators.
+
+${generateTechnicalFallbackContent(symbol, data, charts)}
+
+🔄 Please wait a few minutes before trying again for AI-powered analysis.`;
+  };
+
+  const generateTechnicalFallbackAnalysis = (symbol: string, data: any, charts: ChartImage[]): string => {
+    return `📊 TECHNICAL ANALYSIS (FALLBACK MODE)
+
+⚠️ AI analysis temporarily unavailable. Providing technical analysis based on calculated indicators.
+
+${generateTechnicalFallbackContent(symbol, data, charts)}
+
+🔄 Technical analysis is based on RSI, moving averages, volume, and momentum indicators.`;
+  };
+
+  const generateTechnicalFallbackContent = (symbol: string, data: any, charts: ChartImage[]): string => {
+    const timeframes = charts.map(c => c.timeframe).join(', ');
+    
+    const technicalSummary = [
+      generateTechnicalAnalysis(data.day, 'Day'),
+      generateTechnicalAnalysis(data.week, 'Week'),
+      generateTechnicalAnalysis(data.month, 'Month'),
+      generateTechnicalAnalysis(data.threeMonth, '3 Month'),
+      generateTechnicalAnalysis(data.sixMonth, '6 Month'),
+      generateTechnicalAnalysis(data.year, 'Year')
+    ].join('\n');
+
+    return `📈 Technical Analysis Summary:
+${technicalSummary}
+
+🔍 Key Indicators Analysis:
+- RSI levels indicate overbought/oversold conditions
+- Moving average positions show trend direction
+- Volume analysis reveals market interest
+- Momentum calculations show price velocity
+
+💡 Recommendation Logic:
+- Look for RSI extremes (>70 overbought, <30 oversold)
+- Consider price position relative to moving averages
+- Analyze volume trends for confirmation
+- Multiple timeframe confluence increases signal strength
+
+📋 Charts Generated: ${timeframes}
+✅ Data Source: Real market data via Yahoo Finance/Alpha Vantage
+✅ Technical Indicators: RSI, SMA, Volume, Momentum calculated`;
   };
 
   const analyzeAllSymbols = async () => {
