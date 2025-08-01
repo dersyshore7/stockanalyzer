@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { addWeeks, format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getMultiTimeframeData } from '@/services/alphaVantageApi';
@@ -27,6 +28,12 @@ interface OptionsAnalysisProps {
   symbols: string[];
   onBack: () => void;
 }
+
+const generateExpirationDate = (): string => {
+  const currentDate = new Date();
+  const futureDate = addWeeks(currentDate, 3);
+  return format(futureDate, 'MMMM do');
+};
 
 export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
   const [recommendations, setRecommendations] = useState<OptionsRecommendation[]>([]);
@@ -79,7 +86,7 @@ IMPORTANT: Respond with ONLY valid JSON in this exact format (no markdown, no ex
     "optionType": "call" | "put", 
     "targetPrice": number,
     "priceType": "bid" | "ask",
-    "expirationDate": "July 25th"
+    "expirationDate": "${generateExpirationDate()}"
   },
   "reasoning": "Detailed explanation based on candlestick patterns"
 }
