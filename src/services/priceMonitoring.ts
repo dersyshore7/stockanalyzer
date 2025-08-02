@@ -17,7 +17,12 @@ export class PriceMonitor {
     
     const fetchPrice = async () => {
       try {
-        const data = await getMultiTimeframeData(symbol);
+        const result = await getMultiTimeframeData(symbol);
+        if (result.status.isStale) {
+          console.warn(`Data for ${symbol} is stale as of ${result.status.lastRefreshed}`);
+          return;
+        }
+        const data = result.data;
         if (data.day && data.day.length > 0) {
           const latestPrice = data.day[data.day.length - 1].close;
           callback({
@@ -54,7 +59,12 @@ export class PriceMonitor {
 
   async getCurrentPrice(symbol: string): Promise<number | null> {
     try {
-      const data = await getMultiTimeframeData(symbol);
+      const result = await getMultiTimeframeData(symbol);
+      if (result.status.isStale) {
+        console.warn(`Data for ${symbol} is stale as of ${result.status.lastRefreshed}`);
+        return null;
+      }
+      const data = result.data;
       if (data.day && data.day.length > 0) {
         return data.day[data.day.length - 1].close;
       }

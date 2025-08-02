@@ -34,7 +34,7 @@ interface OptionsAnalysisProps {
   onBack: () => void;
 }
 
-type MultiTimeframeData = Awaited<ReturnType<typeof getMultiTimeframeData>>;
+type MultiTimeframeData = Awaited<ReturnType<typeof getMultiTimeframeData>>['data'];
 
 export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
   const [recommendations, setRecommendations] = useState<OptionsRecommendation[]>([]);
@@ -80,8 +80,15 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
         { symbol, recommendation: '', loading: true }
       ]);
 
-
-      const data = await getMultiTimeframeData(symbol);
+      const result = await getMultiTimeframeData(symbol);
+      if (result.status.isStale) {
+        setRecommendations(prev => [
+          ...prev.filter(r => r.symbol !== symbol),
+          { symbol, recommendation: `Data last refreshed on ${result.status.lastRefreshed}. Analysis skipped due to stale data.`, loading: false }
+        ]);
+        return;
+      }
+      const data = result.data;
       const charts = await generateMultiTimeframeCharts(symbol, data);
 
       const technicalAnalysis = [

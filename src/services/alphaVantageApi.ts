@@ -37,32 +37,74 @@ export interface ProcessedDataPoint {
   volume: number;
 }
 
+interface FetchedSeries {
+  data: ProcessedDataPoint[];
+  lastRefreshed: string;
+}
+
+export interface MultiTimeframeData {
+  day: ProcessedDataPoint[];
+  week: ProcessedDataPoint[];
+  month: ProcessedDataPoint[];
+  threeMonth: ProcessedDataPoint[];
+  sixMonth: ProcessedDataPoint[];
+  year: ProcessedDataPoint[];
+}
+
+export interface QuoteStatus {
+  lastRefreshed: string;
+  isStale: boolean;
+}
+
 const API_KEY = import.meta.env.VITE_ALPHA_VANTAGE_API_KEY || 'demo';
 const BASE_URL = 'https://www.alphavantage.co/query';
 
 const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 const YAHOO_BASE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
 
-export const fetchDailyData = async (symbol: string): Promise<ProcessedDataPoint[]> => {
+const getLatestTradingDay = (date: Date): string => {
+  const d = new Date(date);
+  d.setUTCHours(0, 0, 0, 0);
+  const day = d.getUTCDay();
+  if (day === 6) {
+    d.setUTCDate(d.getUTCDate() - 1);
+  } else if (day === 0) {
+    d.setUTCDate(d.getUTCDate() - 2);
+  }
+  return d.toISOString().split('T')[0];
+};
+
+const isDataStale = (lastRefreshed: string): boolean => {
+  const lastDate = lastRefreshed.split(' ')[0];
+  const latestTrading = getLatestTradingDay(new Date());
+  return lastDate < latestTrading;
+};
+
+export const fetchDailyData = async (symbol: string): Promise<FetchedSeries> => {
   const response = await fetch(`${BASE_URL}?function=TIME_SERIES_DAILY&symbol=${symbol}&apikey=${API_KEY}`);
   const data: AlphaVantageResponse = await response.json();
-  
+
   if (data['Error Message']) {
     throw new Error(`Alpha Vantage API Error: ${data['Error Message']}`);
   }
-  
+
   if (data['Note']) {
     throw new Error('API rate limit exceeded. Please wait or upgrade your Alpha Vantage API key.');
   }
-  
+
   if (!data['Time Series (Daily)']) {
     if (API_KEY === 'demo') {
       throw new Error('Demo API key has limited access. Please provide a valid Alpha Vantage API key.');
     }
     throw new Error('Failed to fetch daily data - please check the stock symbol and try again.');
   }
-  
-  return processTimeSeriesData(data['Time Series (Daily)']);
+
+  const lastRefreshed = data['Meta Data']?.['3. Last Refreshed'] || '';
+
+  return {
+    data: processTimeSeriesData(data['Time Series (Daily)']),
+    lastRefreshed
+  };
 };
 
 export const fetchWeeklyData = async (symbol: string): Promise<ProcessedDataPoint[]> => {
@@ -136,7 +178,7 @@ const processTimeSeriesData = (data: TimeSeriesData): ProcessedDataPoint[] => {
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 };
 
-const fetchYahooFinanceData = async (symbol: string): Promise<ProcessedDataPoint[]> => {
+const fetchYahooFinanceData = async (symbol: string): Promise<FetchedSeries> => {
   try {
     const yahooUrl = `${YAHOO_BASE_URL}/${symbol}?period1=0&period2=9999999999&interval=1d&includePrePost=true&events=div%2Csplit`;
     const response = await fetch(`${CORS_PROXY}${encodeURIComponent(yahooUrl)}`);
@@ -149,22 +191,30 @@ const fetchYahooFinanceData = async (symbol: string): Promise<ProcessedDataPoint
     const result = data.chart.result[0];
     const timestamps = result.timestamp;
     const quotes = result.indicators.quote[0];
-    
-    return timestamps.map((timestamp: number, index: number) => ({
-      date: new Date(timestamp * 1000).toISOString().split('T')[0],
-      open: quotes.open[index] || 0,
-      high: quotes.high[index] || 0,
-      low: quotes.low[index] || 0,
-      close: quotes.close[index] || 0,
-      volume: quotes.volume[index] || 0
-    })).filter((point: ProcessedDataPoint) => point.close > 0);
+    const lastTimestamp = timestamps[timestamps.length - 1];
+
+    return {
+      data: timestamps
+        .map((timestamp: number, index: number) => ({
+          date: new Date(timestamp * 1000).toISOString().split('T')[0],
+          open: quotes.open[index] || 0,
+          high: quotes.high[index] || 0,
+          low: quotes.low[index] || 0,
+          close: quotes.close[index] || 0,
+          volume: quotes.volume[index] || 0
+        }))
+        .filter((point: ProcessedDataPoint) => point.close > 0),
+      lastRefreshed: new Date(lastTimestamp * 1000).toISOString().split('T')[0]
+    };
   } catch (error) {
     console.error('Yahoo Finance CORS proxy error:', error);
     throw new Error('Failed to fetch data from Yahoo Finance via CORS proxy');
   }
 };
 
-export const getMultiTimeframeData = async (symbol: string) => {
+export const getMultiTimeframeData = async (
+  symbol: string
+): Promise<{ data: MultiTimeframeData; status: QuoteStatus }> => {
   try {
     const [daily, weekly, monthly] = await Promise.all([
       fetchDailyData(symbol),
@@ -177,39 +227,55 @@ export const getMultiTimeframeData = async (symbol: string) => {
     const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
     const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
 
-    return {
-      day: daily.slice(-30),
+    const data: MultiTimeframeData = {
+      day: daily.data.slice(-30),
       week: weekly.slice(-12),
       month: monthly.slice(-12),
-      threeMonth: daily.filter(d => new Date(d.date) >= threeMonthsAgo),
-      sixMonth: daily.filter(d => new Date(d.date) >= sixMonthsAgo),
-      year: daily.filter(d => new Date(d.date) >= oneYearAgo)
+      threeMonth: daily.data.filter(d => new Date(d.date) >= threeMonthsAgo),
+      sixMonth: daily.data.filter(d => new Date(d.date) >= sixMonthsAgo),
+      year: daily.data.filter(d => new Date(d.date) >= oneYearAgo)
+    };
+
+    return {
+      data,
+      status: {
+        lastRefreshed: daily.lastRefreshed,
+        isStale: isDataStale(daily.lastRefreshed)
+      }
     };
   } catch (error) {
     console.error('Alpha Vantage failed, trying Yahoo Finance fallback:', error);
-    
+
     try {
       const yahooData = await fetchYahooFinanceData(symbol);
-      
-      if (yahooData.length === 0) {
+
+      if (yahooData.data.length === 0) {
         throw new Error('No data available for this symbol');
       }
-      
+
       const now = new Date();
       const threeMonthsAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
       const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
       const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-      
-      const weeklyData = generateWeeklyFromDaily(yahooData);
-      const monthlyData = generateMonthlyFromDaily(yahooData);
-      
-      return {
-        day: yahooData.slice(-30),
+
+      const weeklyData = generateWeeklyFromDaily(yahooData.data);
+      const monthlyData = generateMonthlyFromDaily(yahooData.data);
+
+      const data: MultiTimeframeData = {
+        day: yahooData.data.slice(-30),
         week: weeklyData.slice(-12),
         month: monthlyData.slice(-12),
-        threeMonth: yahooData.filter(d => new Date(d.date) >= threeMonthsAgo),
-        sixMonth: yahooData.filter(d => new Date(d.date) >= sixMonthsAgo),
-        year: yahooData.filter(d => new Date(d.date) >= oneYearAgo)
+        threeMonth: yahooData.data.filter(d => new Date(d.date) >= threeMonthsAgo),
+        sixMonth: yahooData.data.filter(d => new Date(d.date) >= sixMonthsAgo),
+        year: yahooData.data.filter(d => new Date(d.date) >= oneYearAgo)
+      };
+
+      return {
+        data,
+        status: {
+          lastRefreshed: yahooData.lastRefreshed,
+          isStale: isDataStale(yahooData.lastRefreshed)
+        }
       };
     } catch (fallbackError) {
       console.error('Yahoo Finance CORS proxy fallback also failed:', fallbackError);
