@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { addWeeks, format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -35,11 +34,7 @@ interface OptionsAnalysisProps {
   onBack: () => void;
 }
 
-const generateExpirationDate = (): string => {
-  const currentDate = new Date();
-  const futureDate = addWeeks(currentDate, 3);
-  return format(futureDate, 'MMMM do');
-};
+type MultiTimeframeData = Awaited<ReturnType<typeof getMultiTimeframeData>>;
 
 export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
   const [recommendations, setRecommendations] = useState<OptionsRecommendation[]>([]);
@@ -50,11 +45,11 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
 
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  const retryWithBackoff = async <T extends any>(
-    fn: () => Promise<T>,
-    maxRetries: number = 3,
-    baseDelay: number = 1000
-  ): Promise<T> => {
+    const retryWithBackoff = async <T,>(
+      fn: () => Promise<T>,
+      maxRetries: number = 3,
+      baseDelay: number = 1000
+    ): Promise<T> => {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         return await fn();
@@ -104,7 +99,6 @@ ${technicalAnalysis}
 Chart Analysis: ${charts.length} candlestick charts generated showing price action, volume, and technical indicators across multiple timeframes.`;
 
       const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
-      const dynamicExpirationDate = generateExpirationDate();
       let recommendation = '';
       let parsedRecommendation: OpenAIRecommendationResponse | undefined = undefined;
 
@@ -135,15 +129,17 @@ IMPORTANT: Respond with ONLY valid JSON in this exact format (no markdown, no ex
   "confidence": "Low" | "Medium" | "High",
   "action": {
     "strikePrice": number,
-    "optionType": "call" | "put", 
+    "optionType": "call" | "put",
     "targetPrice": number,
     "priceType": "bid" | "ask",
-    "expirationDate": "${dynamicExpirationDate}"
+    "expirationDate": "YYYY-MM-DD"
   },
   "reasoning": "Detailed explanation based on candlestick patterns"
 }
 
 If recommending "No Action Recommended", omit the "action" field entirely.
+
+Choose an expiration date that best supports the recommended option trade and provide it in YYYY-MM-DD format.
 
 Your recommendation should be grounded in technical analysis including RSI, moving averages, volume analysis, momentum, and candlestick patterns. Look for confluence of multiple technical indicators. If there are clear technical signals from multiple indicators pointing in the same direction, provide a recommendation. If the technical indicators are mixed or neutral, set recommendationType to "No Action Recommended".
 
@@ -342,7 +338,7 @@ To get actual AI-powered options trading recommendations:
 The technical infrastructure is working correctly and ready for AI-powered analysis once an API key is provided.`;
   };
 
-  const generateRateLimitAnalysis = (data: any, charts: ChartImage[]): string => {
+  const generateRateLimitAnalysis = (data: MultiTimeframeData, charts: ChartImage[]): string => {
     return `📊 TECHNICAL ANALYSIS (RATE LIMITED)
 
 ⚠️ OpenAI API rate limit exceeded. Providing technical analysis based on calculated indicators.
@@ -352,7 +348,7 @@ ${generateTechnicalFallbackContent(data, charts)}
 🔄 Please wait a few minutes before trying again for AI-powered analysis.`;
   };
 
-  const generateTechnicalFallbackAnalysis = (data: any, charts: ChartImage[]): string => {
+  const generateTechnicalFallbackAnalysis = (data: MultiTimeframeData, charts: ChartImage[]): string => {
     return `📊 TECHNICAL ANALYSIS (FALLBACK MODE)
 
 ⚠️ AI analysis temporarily unavailable. Providing technical analysis based on calculated indicators.
@@ -362,7 +358,7 @@ ${generateTechnicalFallbackContent(data, charts)}
 🔄 Technical analysis is based on RSI, moving averages, volume, and momentum indicators.`;
   };
 
-  const generateTechnicalFallbackContent = (data: any, charts: ChartImage[]): string => {
+  const generateTechnicalFallbackContent = (data: MultiTimeframeData, charts: ChartImage[]): string => {
     const timeframes = charts.map(c => c.timeframe).join(', ');
     
     const technicalSummary = [
