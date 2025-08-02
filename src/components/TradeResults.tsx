@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useTradeTracking, type TrackedTrade } from '@/hooks/use-trade-tracking';
 import { priceMonitor } from '@/services/priceMonitoring';
+import { toast } from '@/hooks/use-toast';
 
 interface TradeResultsProps {
   onBack: () => void;
@@ -47,6 +48,10 @@ export function TradeResults({ onBack }: TradeResultsProps) {
 
   const handleCloseTrade = (tradeId: string) => {
     closeTrade(tradeId);
+    toast({
+      title: 'Trade closed',
+      description: 'The trade has been marked as closed.',
+    });
   };
 
   const formatCurrency = (amount: number) => {

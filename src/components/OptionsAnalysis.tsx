@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { toast } from '@/hooks/use-toast';
 import { getMultiTimeframeData, generateTechnicalAnalysis } from '@/services/alphaVantageApi';
 import { generateMultiTimeframeCharts, ChartImage } from '@/services/chartGenerator';
 import { useTradeTracking } from '@/hooks/use-trade-tracking';
@@ -457,6 +458,11 @@ ${technicalSummary}
     }
 
     setEntryPrices(prev => ({ ...prev, [rec.symbol]: '' }));
+
+    toast({
+      title: 'Trade tracking enabled',
+      description: `${rec.symbol} trade is now being tracked.`,
+    });
   };
 
   const handleEntryPriceChange = (symbol: string, value: string) => {
