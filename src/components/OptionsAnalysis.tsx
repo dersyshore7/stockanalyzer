@@ -112,22 +112,23 @@ ${technicalAnalysis}
       if (openaiApiKey && openaiApiKey !== 'YOUR_OPENAI_API_KEY_HERE') {
         try {
           const makeOpenAIRequest = async (): Promise<{ recommendation: string; parsedRecommendation?: OpenAIRecommendationResponse }> => {
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${openaiApiKey}`
-              },
-              body: JSON.stringify({
-                model: 'o3',
-                messages: [{
-                  role: 'user',
-                  content: [
-                    {
-                      type: 'text',
-                      text: `Stock: ${symbol}
+            const request = async (model: string) => {
+              const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${openaiApiKey}`
+                },
+                body: JSON.stringify({
+                  model,
+                  messages: [{
+                    role: 'user',
+                    content: [
+                      {
+                        type: 'text',
+                        text: `Stock: ${symbol}
 
-Based on the charts provided, analyze the candlestick patterns and provide a recommendation. 
+Based on the charts provided, analyze the candlestick patterns and provide a recommendation.
 
 IMPORTANT: Respond with ONLY valid JSON in this exact format (no markdown, no extra text):
 
@@ -167,59 +168,71 @@ CONFIDENCE LEVEL CRITERIA:
 Provide detailed reasoning explaining which specific technical indicators support your recommendation and justify your confidence level.
 
 Technical Data: ${chartDescriptions}`
-                    },
-                    ...charts.map(chart => ({
-                      type: 'image_url' as const,
-                      image_url: {
-                        url: chart.dataUrl
-                      }
-                    }))
-                  ]
-                }],
-                max_tokens: 600,
-                temperature: 0.7
-              })
-            });
+                      },
+                      ...charts.map(chart => ({
+                        type: 'image_url' as const,
+                        image_url: {
+                          url: chart.dataUrl
+                        }
+                      }))
+                    ]
+                  }],
+                  max_tokens: 600,
+                  temperature: 0.7
+                })
+              });
 
-            if (!response.ok) {
-              if (response.status === 429) {
-                throw new Error('rate_limit_exceeded');
-              }
-              throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
-            }
+              const result = await response.json();
 
-            const result = await response.json();
-            
-            if (result.choices && result.choices[0]) {
-              const content = result.choices[0].message.content;
-              console.log('Raw OpenAI response:', content);
-              
-              let jsonContent = content;
-              if (content.includes('```json')) {
-                const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-                if (jsonMatch) {
-                  jsonContent = jsonMatch[1];
+              if (!response.ok) {
+                if (response.status === 429) {
+                  throw new Error('rate_limit_exceeded');
                 }
-              } else if (content.includes('```')) {
-                const jsonMatch = content.match(/```\s*([\s\S]*?)\s*```/);
-                if (jsonMatch) {
-                  jsonContent = jsonMatch[1];
+                throw new Error(result.error?.message || `OpenAI API error: ${response.status} ${response.statusText}`);
+              }
+
+              if (result.choices && result.choices[0]) {
+                const content = result.choices[0].message.content;
+                console.log('Raw OpenAI response:', content);
+
+                let jsonContent = content;
+                if (content.includes('```json')) {
+                  const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+                  if (jsonMatch) {
+                    jsonContent = jsonMatch[1];
+                  }
+                } else if (content.includes('```')) {
+                  const jsonMatch = content.match(/```\s*([\s\S]*?)\s*```/);
+                  if (jsonMatch) {
+                    jsonContent = jsonMatch[1];
+                  }
+                }
+
+                try {
+                  const parsedResponse: OpenAIRecommendationResponse = JSON.parse(jsonContent.trim());
+                  console.log('Parsed OpenAI response:', parsedResponse);
+                  const formattedRecommendation = formatRecommendationForDisplay(parsedResponse);
+                  console.log('Formatted recommendation:', formattedRecommendation);
+                  return { recommendation: formattedRecommendation, parsedRecommendation: parsedResponse };
+                } catch (jsonError) {
+                  console.error('Failed to parse OpenAI JSON response, using raw content:', jsonError);
+                  console.error('Content that failed to parse:', jsonContent);
+                  return { recommendation: formatPlainTextResponse(content) };
                 }
               }
-              
-              try {
-                const parsedResponse: OpenAIRecommendationResponse = JSON.parse(jsonContent.trim());
-                console.log('Parsed OpenAI response:', parsedResponse);
-                const formattedRecommendation = formatRecommendationForDisplay(parsedResponse);
-                console.log('Formatted recommendation:', formattedRecommendation);
-                return { recommendation: formattedRecommendation, parsedRecommendation: parsedResponse };
-              } catch (jsonError) {
-                console.error('Failed to parse OpenAI JSON response, using raw content:', jsonError);
-                console.error('Content that failed to parse:', jsonContent);
-                return { recommendation: formatPlainTextResponse(content) };
-              }
-            } else {
+
               throw new Error('Invalid response from OpenAI');
+            };
+
+            try {
+              return await request('o3');
+            } catch (error) {
+              const message = error instanceof Error ? error.message.toLowerCase() : '';
+              if (message.includes('model') || message.includes('exist')) {
+                console.warn('o3 model unavailable, falling back to gpt-4o');
+                return await request('gpt-4o');
+              }
+              throw error;
             }
           };
 
