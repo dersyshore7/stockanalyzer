@@ -39,12 +39,14 @@ export function useTradeTracking() {
     const storedTrades = localStorage.getItem(STORAGE_KEY);
     if (storedTrades) {
       try {
-        const parsedTrades = JSON.parse(storedTrades);
-        setTrades(parsedTrades.map((trade: any) => ({
-          ...trade,
-          confirmedAt: new Date(trade.confirmedAt),
-          closedAt: trade.closedAt ? new Date(trade.closedAt) : undefined,
-        })));
+        const parsedTrades = JSON.parse(storedTrades) as TrackedTrade[];
+        setTrades(
+          parsedTrades.map(trade => ({
+            ...trade,
+            confirmedAt: new Date(trade.confirmedAt),
+            closedAt: trade.closedAt ? new Date(trade.closedAt) : undefined,
+          }))
+        );
       } catch (error) {
         console.error('Failed to parse stored trades:', error);
       }

@@ -93,7 +93,7 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
 
       const technicalAnalysis = [
         generateTechnicalAnalysis(data.day, 'Day'),
-        generateTechnicalAnalysis(data.week, 'Week'), 
+        generateTechnicalAnalysis(data.week, 'Week'),
         generateTechnicalAnalysis(data.month, 'Month'),
         generateTechnicalAnalysis(data.threeMonth, '3 Month'),
         generateTechnicalAnalysis(data.sixMonth, '6 Month'),
@@ -103,7 +103,7 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
       const chartDescriptions = `Technical Analysis Summary:
 ${technicalAnalysis}
 
-Chart Analysis: ${charts.length} candlestick charts generated showing price action, volume, and technical indicators across multiple timeframes.`;
+  Chart Analysis: ${charts.length} candlestick charts generated showing price action, volume, and technical indicators (SMA50, SMA200, MACD, OBV, ATR) across multiple timeframes.`;
 
       const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
       let recommendation = '';
@@ -112,22 +112,23 @@ Chart Analysis: ${charts.length} candlestick charts generated showing price acti
       if (openaiApiKey && openaiApiKey !== 'YOUR_OPENAI_API_KEY_HERE') {
         try {
           const makeOpenAIRequest = async (): Promise<{ recommendation: string; parsedRecommendation?: OpenAIRecommendationResponse }> => {
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${openaiApiKey}`
-              },
-              body: JSON.stringify({
-                model: 'gpt-4o',
-                messages: [{
-                  role: 'user',
-                  content: [
-                    {
-                      type: 'text',
-                      text: `Stock: ${symbol}
+            const request = async (model: string) => {
+              const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${openaiApiKey}`
+                },
+                body: JSON.stringify({
+                  model,
+                  messages: [{
+                    role: 'user',
+                    content: [
+                      {
+                        type: 'text',
+                        text: `Stock: ${symbol}
 
-Based on the charts provided, analyze the candlestick patterns and provide a recommendation. 
+Based on the charts provided, analyze the candlestick patterns and provide a recommendation.
 
 IMPORTANT: Respond with ONLY valid JSON in this exact format (no markdown, no extra text):
 
@@ -148,76 +149,90 @@ If recommending "No Action Recommended", omit the "action" field entirely.
 
 Choose an expiration date that best supports the recommended option trade and provide it in YYYY-MM-DD format.
 
-Your recommendation should be grounded in technical analysis including RSI, moving averages, volume analysis, momentum, and candlestick patterns. Look for confluence of multiple technical indicators. If there are clear technical signals from multiple indicators pointing in the same direction, provide a recommendation. If the technical indicators are mixed or neutral, set recommendationType to "No Action Recommended".
+Your recommendation should be grounded in technical analysis including RSI, 50- & 200-day moving averages (trend direction), MACD (momentum), On-Balance Volume (OBV for volume flow), Average True Range (ATR for volatility), broader volume analysis, momentum, and candlestick patterns. Look for confluence of multiple technical indicators. If there are clear technical signals from multiple indicators pointing in the same direction, provide a recommendation. If the technical indicators are mixed or neutral, set recommendationType to "No Action Recommended".
 
 Consider the following for recommendations:
 - RSI overbought (>70) or oversold (<30) conditions
-- Price position relative to moving averages
-- Volume trends and momentum
+- Position relative to 50- & 200-day moving averages and crossovers
+- MACD alignment above/below the signal line for momentum shifts
+- OBV rising or falling to gauge volume participation
+- ATR values to measure current volatility
 - Candlestick patterns (doji, hammer, engulfing, etc.)
 - Overall trend direction across timeframes
 
 CONFIDENCE LEVEL CRITERIA:
-- High 🟢: Strong confluence of 4+ technical indicators pointing in same direction, clear RSI signals (>70 or <30), strong volume confirmation, clear candlestick patterns
-- Medium 🟡: Moderate confluence of 2-3 technical indicators, some mixed signals but overall direction clear, RSI approaching extremes (60-70 or 30-40)
-- Low 🔴: Weak confluence of indicators, conflicting signals, neutral RSI (40-60), unclear trend direction, high uncertainty
+- High 🟢: Strong confluence of 4+ indicators (e.g., RSI extremes, SMA50/200 crossover, MACD agreement, OBV trend, ATR context) pointing in same direction, strong volume confirmation, clear candlestick patterns
+- Medium 🟡: Moderate confluence of 2-3 of these indicators with mostly consistent signals, RSI approaching extremes (60-70 or 30-40)
+- Low 🔴: Weak or conflicting signals among indicators, neutral RSI (40-60), unclear trend direction, high uncertainty
 
 Provide detailed reasoning explaining which specific technical indicators support your recommendation and justify your confidence level.
 
 Technical Data: ${chartDescriptions}`
-                    },
-                    ...charts.map(chart => ({
-                      type: 'image_url' as const,
-                      image_url: {
-                        url: chart.dataUrl
-                      }
-                    }))
-                  ]
-                }],
-                max_tokens: 600,
-                temperature: 0.7
-              })
-            });
+                      },
+                      ...charts.map(chart => ({
+                        type: 'image_url' as const,
+                        image_url: {
+                          url: chart.dataUrl
+                        }
+                      }))
+                    ]
+                  }],
+                  max_tokens: 600,
+                  temperature: 0.7
+                })
+              });
 
-            if (!response.ok) {
-              if (response.status === 429) {
-                throw new Error('rate_limit_exceeded');
-              }
-              throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
-            }
+              const result = await response.json();
 
-            const result = await response.json();
-            
-            if (result.choices && result.choices[0]) {
-              const content = result.choices[0].message.content;
-              console.log('Raw OpenAI response:', content);
-              
-              let jsonContent = content;
-              if (content.includes('```json')) {
-                const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-                if (jsonMatch) {
-                  jsonContent = jsonMatch[1];
+              if (!response.ok) {
+                if (response.status === 429) {
+                  throw new Error('rate_limit_exceeded');
                 }
-              } else if (content.includes('```')) {
-                const jsonMatch = content.match(/```\s*([\s\S]*?)\s*```/);
-                if (jsonMatch) {
-                  jsonContent = jsonMatch[1];
+                throw new Error(result.error?.message || `OpenAI API error: ${response.status} ${response.statusText}`);
+              }
+
+              if (result.choices && result.choices[0]) {
+                const content = result.choices[0].message.content;
+                console.log('Raw OpenAI response:', content);
+
+                let jsonContent = content;
+                if (content.includes('```json')) {
+                  const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+                  if (jsonMatch) {
+                    jsonContent = jsonMatch[1];
+                  }
+                } else if (content.includes('```')) {
+                  const jsonMatch = content.match(/```\s*([\s\S]*?)\s*```/);
+                  if (jsonMatch) {
+                    jsonContent = jsonMatch[1];
+                  }
+                }
+
+                try {
+                  const parsedResponse: OpenAIRecommendationResponse = JSON.parse(jsonContent.trim());
+                  console.log('Parsed OpenAI response:', parsedResponse);
+                  const formattedRecommendation = formatRecommendationForDisplay(parsedResponse);
+                  console.log('Formatted recommendation:', formattedRecommendation);
+                  return { recommendation: formattedRecommendation, parsedRecommendation: parsedResponse };
+                } catch (jsonError) {
+                  console.error('Failed to parse OpenAI JSON response, using raw content:', jsonError);
+                  console.error('Content that failed to parse:', jsonContent);
+                  return { recommendation: formatPlainTextResponse(content) };
                 }
               }
-              
-              try {
-                const parsedResponse: OpenAIRecommendationResponse = JSON.parse(jsonContent.trim());
-                console.log('Parsed OpenAI response:', parsedResponse);
-                const formattedRecommendation = formatRecommendationForDisplay(parsedResponse);
-                console.log('Formatted recommendation:', formattedRecommendation);
-                return { recommendation: formattedRecommendation, parsedRecommendation: parsedResponse };
-              } catch (jsonError) {
-                console.error('Failed to parse OpenAI JSON response, using raw content:', jsonError);
-                console.error('Content that failed to parse:', jsonContent);
-                return { recommendation: formatPlainTextResponse(content) };
-              }
-            } else {
+
               throw new Error('Invalid response from OpenAI');
+            };
+
+            try {
+              return await request('o3');
+            } catch (error) {
+              const message = error instanceof Error ? error.message.toLowerCase() : '';
+              if (message.includes('model') || message.includes('exist')) {
+                console.warn('o3 model unavailable, falling back to gpt-4o');
+                return await request('gpt-4o');
+              }
+              throw error;
             }
           };
 
@@ -362,7 +377,7 @@ ${generateTechnicalFallbackContent(data, charts)}
 
 ${generateTechnicalFallbackContent(data, charts)}
 
-🔄 Technical analysis is based on RSI, moving averages, volume, and momentum indicators.`;
+🔄 Technical analysis is based on RSI, 50- & 200-day moving averages, MACD, OBV, ATR, volume, and momentum indicators.`;
   };
 
   const generateTechnicalFallbackContent = (data: MultiTimeframeData, charts: ChartImage[]): string => {
@@ -382,19 +397,20 @@ ${technicalSummary}
 
 🔍 Key Indicators Analysis:
 - RSI levels indicate overbought/oversold conditions
-- Moving average positions show trend direction
-- Volume analysis reveals market interest
-- Momentum calculations show price velocity
+- 50- & 200-day moving averages highlight trend direction
+- MACD crossovers reveal momentum shifts
+- OBV trends show volume flow
+- ATR values reflect market volatility
 
 💡 Recommendation Logic:
 - Look for RSI extremes (>70 overbought, <30 oversold)
-- Consider price position relative to moving averages
-- Analyze volume trends for confirmation
+- Consider price position relative to moving averages and MACD alignment
+- Monitor OBV direction and ATR for confirmation
 - Multiple timeframe confluence increases signal strength
 
 📋 Charts Generated: ${timeframes}
 ✅ Data Source: Real market data via Yahoo Finance/Alpha Vantage
-✅ Technical Indicators: RSI, SMA, Volume, Momentum calculated`;
+✅ Technical Indicators: RSI, SMA50/200, MACD, OBV, ATR, Volume, Momentum calculated`;
   };
 
   const analyzeAllSymbols = async () => {
