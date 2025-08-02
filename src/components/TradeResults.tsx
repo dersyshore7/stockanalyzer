@@ -182,9 +182,15 @@ export function TradeResults({ onBack }: TradeResultsProps) {
                         </div>
                       </div>
                     </div>
-                    
+
+                    {trade.recommendation.action?.expirationReason && (
+                      <div className="mt-2 text-sm text-gray-600">
+                        Expiration Rationale: {trade.recommendation.action.expirationReason}
+                      </div>
+                    )}
+
                     <div className="mt-4 flex justify-end">
-                      <Button 
+                      <Button
                         onClick={() => handleCloseTrade(trade.id)}
                         variant="outline"
                         size="sm"
