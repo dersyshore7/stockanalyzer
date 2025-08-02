@@ -19,6 +19,7 @@ interface OptionsRecommendation {
 
 interface OpenAIRecommendationResponse {
   recommendationType: 'Call Option Recommended' | 'Put Option Recommended' | 'No Action Recommended';
+  confidence: 'Low' | 'Medium' | 'High';
   action?: {
     strikePrice: number;
     optionType: 'call' | 'put';
@@ -131,6 +132,7 @@ IMPORTANT: Respond with ONLY valid JSON in this exact format (no markdown, no ex
 
 {
   "recommendationType": "Call Option Recommended" | "Put Option Recommended" | "No Action Recommended",
+  "confidence": "Low" | "Medium" | "High",
   "action": {
     "strikePrice": number,
     "optionType": "call" | "put", 
@@ -152,7 +154,12 @@ Consider the following for recommendations:
 - Candlestick patterns (doji, hammer, engulfing, etc.)
 - Overall trend direction across timeframes
 
-Provide detailed reasoning explaining which specific technical indicators support your recommendation.
+CONFIDENCE LEVEL CRITERIA:
+- High 🟢: Strong confluence of 4+ technical indicators pointing in same direction, clear RSI signals (>70 or <30), strong volume confirmation, clear candlestick patterns
+- Medium 🟡: Moderate confluence of 2-3 technical indicators, some mixed signals but overall direction clear, RSI approaching extremes (60-70 or 30-40)
+- Low 🔴: Weak confluence of indicators, conflicting signals, neutral RSI (40-60), unclear trend direction, high uncertainty
+
+Provide detailed reasoning explaining which specific technical indicators support your recommendation and justify your confidence level.
 
 Technical Data: ${chartDescriptions}`
                     },
@@ -268,7 +275,9 @@ Technical Data: ${chartDescriptions}`
   };
 
   const formatRecommendationForDisplay = (response: OpenAIRecommendationResponse): string => {
+    const confidenceEmoji = response.confidence === 'High' ? '🟢' : response.confidence === 'Medium' ? '🟡' : '🔴';
     let formatted = `📊 ${response.recommendationType.toUpperCase()}\n\n`;
+    formatted += `${confidenceEmoji} Confidence: ${response.confidence}\n\n`;
     
     if (response.action && response.recommendationType !== 'No Action Recommended') {
       formatted += `💡 Recommended Action:\n`;
