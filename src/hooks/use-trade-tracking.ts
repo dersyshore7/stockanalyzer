@@ -5,15 +5,16 @@ export interface TrackedTrade {
   symbol: string;
   recommendation: {
     recommendationType: 'Call Option Recommended' | 'Put Option Recommended' | 'No Action Recommended';
-    action?: {
-      strikePrice: number;
-      optionType: 'call' | 'put';
-      targetPrice: number;
-      priceType: 'bid' | 'ask';
-      expirationDate: string;
+      action?: {
+        strikePrice: number;
+        optionType: 'call' | 'put';
+        targetPrice: number;
+        priceType: 'bid' | 'ask';
+        expirationDate: string;
+        expirationReason: string;
+      };
+      reasoning: string;
     };
-    reasoning: string;
-  };
   confirmedAt: Date;
   entryPrice?: number;
   currentPrice?: number;

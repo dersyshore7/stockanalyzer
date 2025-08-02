@@ -25,6 +25,7 @@ interface OpenAIRecommendationResponse {
     targetPrice: number;
     priceType: 'bid' | 'ask';
     expirationDate: string;
+    expirationReason: string;
   };
   reasoning: string;
 }
@@ -140,14 +141,15 @@ IMPORTANT: Respond with ONLY valid JSON in this exact format (no markdown, no ex
     "optionType": "call" | "put",
     "targetPrice": number,
     "priceType": "bid" | "ask",
-    "expirationDate": "YYYY-MM-DD"
-  },
+      "expirationDate": "YYYY-MM-DD",
+      "expirationReason": "Why this expiration date was chosen"
+    },
   "reasoning": "Detailed explanation based on candlestick patterns"
 }
 
 If recommending "No Action Recommended", omit the "action" field entirely.
 
-Choose an expiration date that best supports the recommended option trade and provide it in YYYY-MM-DD format.
+Choose an expiration date that best supports the recommended option trade and provide it in YYYY-MM-DD format. Include a brief explanation of why this expiration date was chosen.
 
 Your recommendation should be grounded in technical analysis including RSI, 50- & 200-day moving averages (trend direction), MACD (momentum), On-Balance Volume (OBV for volume flow), Average True Range (ATR for volatility), broader volume analysis, momentum, and candlestick patterns. Look for confluence of multiple technical indicators. If there are clear technical signals from multiple indicators pointing in the same direction, provide a recommendation. If the technical indicators are mixed or neutral, set recommendationType to "No Action Recommended".
 
@@ -301,8 +303,9 @@ Technical Data: ${chartDescriptions}`
       formatted += `💡 Recommended Action:\n`;
       formatted += `Purchase (paper) ${response.action.optionType.toUpperCase()} Option at Strike Price of $${response.action.strikePrice}\n`;
       formatted += `Target ${response.action.priceType === 'bid' ? 'Bid' : 'Ask'} price: $${response.action.targetPrice}\n`;
-      formatted += `Expiration: ${response.action.expirationDate}\n\n`;
-    }
+        formatted += `Expiration: ${response.action.expirationDate}\n`;
+        formatted += `Expiration Rationale: ${response.action.expirationReason}\n\n`;
+      }
     
     formatted += `🔍 Candlestick Pattern Analysis:\n${response.reasoning}`;
     
