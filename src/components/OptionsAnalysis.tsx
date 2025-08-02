@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { getMultiTimeframeData, generateTechnicalAnalysis } from '@/services/alphaVantageApi';
 import { generateMultiTimeframeCharts, ChartImage } from '@/services/chartGenerator';
 import { useTradeTracking } from '@/hooks/use-trade-tracking';
@@ -42,6 +43,7 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
   const [currentSymbolIndex, setCurrentSymbolIndex] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [entryPrices, setEntryPrices] = useState<Record<string, string>>({});
+  const [enlargedChart, setEnlargedChart] = useState<(ChartImage & { symbol: string }) | null>(null);
   const { confirmTrade, getTradeBySymbol, updateTradePrice } = useTradeTracking();
 
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -556,10 +558,11 @@ ${technicalSummary}
                         <div className="grid grid-cols-2 gap-2">
                           {rec.charts.map((chart, index) => (
                             <div key={index} className="text-center">
-                              <img 
-                                src={chart.dataUrl} 
+                              <img
+                                src={chart.dataUrl}
                                 alt={`${rec.symbol} ${chart.timeframe}`}
-                                className="w-full h-32 object-contain border rounded"
+                                className="w-full h-32 object-contain border rounded cursor-pointer"
+                                onClick={() => setEnlargedChart({ ...chart, symbol: rec.symbol })}
                               />
                               <p className="text-xs text-gray-500 mt-1">{chart.timeframe}</p>
                             </div>
@@ -621,6 +624,22 @@ ${technicalSummary}
           ))}
         </div>
       </div>
+      <Dialog open={!!enlargedChart} onOpenChange={(open) => !open && setEnlargedChart(null)}>
+        <DialogContent className="max-w-3xl">
+          {enlargedChart && (
+            <div className="text-center">
+              <img
+                src={enlargedChart.dataUrl}
+                alt={`${enlargedChart.symbol} ${enlargedChart.timeframe}`}
+                className="w-full h-auto"
+              />
+              <p className="text-sm text-gray-500 mt-2">
+                {enlargedChart.symbol} {enlargedChart.timeframe}
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
