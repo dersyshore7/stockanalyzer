@@ -407,50 +407,138 @@ export const calculateVolumeAnalysis = (data: ProcessedDataPoint[]): {
   return { avgVolume, recentVolume, volumeTrend };
 };
 
-export const calculateTrendDirection = (data: ProcessedDataPoint[]): {
-  shortTrend: string;
-  mediumTrend: string;
-  momentum: number;
-} => {
-  if (data.length < 20) {
-    return {
-      shortTrend: 'insufficient data',
-      mediumTrend: 'insufficient data',
-      momentum: 0
-    };
+export const calculateEMA = (data: ProcessedDataPoint[], period: number): number => {
+  if (data.length < period) return data[data.length - 1]?.close || 0;
+
+  const k = 2 / (period + 1);
+  let ema = data.slice(0, period).reduce((sum, p) => sum + p.close, 0) / period;
+
+  for (let i = period; i < data.length; i++) {
+    ema = data[i].close * k + ema * (1 - k);
   }
-  
-  const recent = data.slice(-5);
-  const medium = data.slice(-20);
-  
-  const recentChange = (recent[recent.length - 1].close - recent[0].close) / recent[0].close * 100;
-  const mediumChange = (medium[medium.length - 1].close - medium[0].close) / medium[0].close * 100;
-  
-  const shortTrend = recentChange > 2 ? 'bullish' : recentChange < -2 ? 'bearish' : 'sideways';
-  const mediumTrend = mediumChange > 5 ? 'bullish' : mediumChange < -5 ? 'bearish' : 'sideways';
-  
-  return {
-    shortTrend,
-    mediumTrend,
-    momentum: recentChange
-  };
+
+  return ema;
+};
+
+export const calculateMACD = (
+  data: ProcessedDataPoint[]
+): { macd: number; signal: number } => {
+  if (data.length < 35) return { macd: 0, signal: 0 };
+
+  const ema12Arr: number[] = [];
+  const ema26Arr: number[] = [];
+  const closes = data.map(p => p.close);
+
+  const k12 = 2 / (12 + 1);
+  const k26 = 2 / (26 + 1);
+
+  let ema12 = closes.slice(0, 12).reduce((sum, p) => sum + p, 0) / 12;
+  let ema26 = closes.slice(0, 26).reduce((sum, p) => sum + p, 0) / 26;
+
+  ema12Arr[11] = ema12;
+  ema26Arr[25] = ema26;
+
+  for (let i = 12; i < closes.length; i++) {
+    ema12 = closes[i] * k12 + ema12 * (1 - k12);
+    ema12Arr[i] = ema12;
+  }
+
+  for (let i = 26; i < closes.length; i++) {
+    ema26 = closes[i] * k26 + ema26 * (1 - k26);
+    ema26Arr[i] = ema26;
+  }
+
+  const macdSeries: number[] = [];
+  for (let i = 25; i < closes.length; i++) {
+    macdSeries.push(ema12Arr[i] - ema26Arr[i]);
+  }
+
+  const k9 = 2 / (9 + 1);
+  let signal = macdSeries.slice(0, 9).reduce((sum, p) => sum + p, 0) / 9;
+
+  for (let i = 9; i < macdSeries.length; i++) {
+    signal = macdSeries[i] * k9 + signal * (1 - k9);
+  }
+
+  const macd = macdSeries[macdSeries.length - 1];
+
+  return { macd, signal };
+};
+
+export const calculateOBV = (data: ProcessedDataPoint[]): number[] => {
+  const obv: number[] = [0];
+  for (let i = 1; i < data.length; i++) {
+    if (data[i].close > data[i - 1].close) {
+      obv[i] = obv[i - 1] + data[i].volume;
+    } else if (data[i].close < data[i - 1].close) {
+      obv[i] = obv[i - 1] - data[i].volume;
+    } else {
+      obv[i] = obv[i - 1];
+    }
+  }
+  return obv;
+};
+
+export const calculateATR = (data: ProcessedDataPoint[], period: number = 14): number => {
+  if (data.length < period + 1) return 0;
+
+  const trs: number[] = [];
+  for (let i = 1; i < data.length; i++) {
+    const current = data[i];
+    const prev = data[i - 1];
+    const tr = Math.max(
+      current.high - current.low,
+      Math.abs(current.high - prev.close),
+      Math.abs(current.low - prev.close)
+    );
+    trs.push(tr);
+  }
+
+  const recent = trs.slice(-period);
+  const atr = recent.reduce((sum, v) => sum + v, 0) / period;
+
+  return atr;
 };
 
 export const generateTechnicalAnalysis = (data: ProcessedDataPoint[], timeframe: string): string => {
-  if (data.length < 20) {
+  if (data.length < 2) {
     return `${timeframe}: Insufficient data for technical analysis`;
   }
-  
-  const rsi = calculateRSI(data);
-  const sma20 = calculateSMA(data, 20);
-  const sma50 = calculateSMA(data, Math.min(50, data.length));
+
   const currentPrice = data[data.length - 1].close;
+
+  const rsiValue = data.length >= 15 ? calculateRSI(data) : null;
+  const rsiSignal = rsiValue === null
+    ? 'insufficient data'
+    : `${rsiValue.toFixed(1)} (${rsiValue > 70 ? 'overbought' : rsiValue < 30 ? 'oversold' : 'neutral'})`;
+
+  const sma50 = data.length >= 50 ? calculateSMA(data, 50) : null;
+  const sma200 = data.length >= 200 ? calculateSMA(data, 200) : null;
+  const smaSignal = sma50 === null
+    ? 'SMA50 insufficient data'
+    : currentPrice > sma50 ? 'above SMA50' : 'below SMA50';
+  const trendSignal = sma50 === null || sma200 === null
+    ? 'trend insufficient data'
+    : sma50 > sma200 ? 'uptrend' : 'downtrend';
+
+  const macdResult = data.length >= 35 ? calculateMACD(data) : null;
+  const macdSignal = macdResult === null
+    ? 'insufficient data'
+    : `${macdResult.macd.toFixed(2)} (${macdResult.macd > macdResult.signal ? 'above' : 'below'} signal)`;
+
+  const obvValues = data.length >= 2 ? calculateOBV(data) : null;
+  const obvSignal = obvValues && obvValues.length >= 2
+    ? obvValues[obvValues.length - 1] > obvValues[obvValues.length - 2]
+      ? 'rising'
+      : obvValues[obvValues.length - 1] < obvValues[obvValues.length - 2]
+        ? 'falling'
+        : 'flat'
+    : 'insufficient data';
+
+  const atrValue = data.length >= 15 ? calculateATR(data) : null;
+  const atrText = atrValue === null ? 'insufficient data' : atrValue.toFixed(2);
+
   const volumeAnalysis = calculateVolumeAnalysis(data);
-  const trendAnalysis = calculateTrendDirection(data);
-  
-  const rsiSignal = rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : 'neutral';
-  const smaSignal = currentPrice > sma20 ? 'above SMA20' : 'below SMA20';
-  const trendSignal = sma20 > sma50 ? 'uptrend' : 'downtrend';
-  
-  return `${timeframe}: Price $${currentPrice.toFixed(2)}, RSI ${rsi.toFixed(1)} (${rsiSignal}), ${smaSignal}, ${trendSignal}, Volume ${volumeAnalysis.volumeTrend}, Momentum ${trendAnalysis.momentum.toFixed(1)}%`;
+
+  return `${timeframe}: Price $${currentPrice.toFixed(2)}, RSI ${rsiSignal}, ${smaSignal}, Trend ${trendSignal}, MACD ${macdSignal}, OBV ${obvSignal}, ATR ${atrText}, Volume ${volumeAnalysis.volumeTrend}`;
 };
