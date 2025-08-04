@@ -153,6 +153,8 @@ If recommending "No Action Recommended", omit the "action" field entirely.
 
 Choose an expiration date that best supports the recommended option trade and provide it in YYYY-MM-DD format. Include a brief explanation of why this expiration date was chosen.
 
+Bias recommendations toward short-term options trades (expiration within 14 days) whenever technically sound. If suggesting a longer expiration, clearly justify why a short-term option is not appropriate.
+
 Your recommendation should be grounded in technical analysis including RSI, 50- & 200-day moving averages (trend direction), MACD (momentum), On-Balance Volume (OBV for volume flow), Average True Range (ATR for volatility), broader volume analysis, momentum, and candlestick patterns. Look for confluence of multiple technical indicators. If there are clear technical signals from multiple indicators pointing in the same direction, provide a recommendation. If the technical indicators are mixed or neutral, set recommendationType to "No Action Recommended".
 
 Consider the following for recommendations:
