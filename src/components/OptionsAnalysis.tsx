@@ -23,10 +23,12 @@ interface OpenAIRecommendationResponse {
   action?: {
     strikePrice: number;
     optionType: 'call' | 'put';
-    targetPrice: number;
-    priceType: 'bid' | 'ask';
     expirationDate: string;
     expirationReason: string;
+    exitStrategy: {
+      takeProfitStockPrice: number;
+      stopLossStockPrice: number;
+    };
   };
   reasoning: string;
 }
@@ -141,11 +143,13 @@ IMPORTANT: Respond with ONLY valid JSON in this exact format (no markdown, no ex
   "action": {
     "strikePrice": number,
     "optionType": "call" | "put",
-    "targetPrice": number,
-    "priceType": "bid" | "ask",
-      "expirationDate": "YYYY-MM-DD",
-      "expirationReason": "Why this expiration date was chosen"
-    },
+    "expirationDate": "YYYY-MM-DD",
+    "expirationReason": "Why this expiration date was chosen",
+    "exitStrategy": {
+      "takeProfitStockPrice": number,
+      "stopLossStockPrice": number
+    }
+  },
   "reasoning": "Detailed explanation based on candlestick patterns"
 }
 
@@ -304,10 +308,14 @@ Technical Data: ${chartDescriptions}`
     if (response.action && response.recommendationType !== 'No Action Recommended') {
       formatted += `💡 Recommended Action:\n`;
       formatted += `Purchase (paper) ${response.action.optionType.toUpperCase()} Option at Strike Price of $${response.action.strikePrice}\n`;
-      formatted += `Target ${response.action.priceType === 'bid' ? 'Bid' : 'Ask'} price: $${response.action.targetPrice}\n`;
-        formatted += `Expiration: ${response.action.expirationDate}\n`;
-        formatted += `Expiration Rationale: ${response.action.expirationReason}\n\n`;
-      }
+      formatted += `Expiration: ${response.action.expirationDate}\n`;
+      formatted += `Expiration Rationale: ${response.action.expirationReason}\n`;
+      formatted += `Exit Strategy:\n`;
+      formatted += `${JSON.stringify({
+        take_profit_stock_price: response.action.exitStrategy.takeProfitStockPrice,
+        stop_loss_stock_price: response.action.exitStrategy.stopLossStockPrice,
+      }, null, 2)}\n\n`;
+    }
     
     formatted += `🔍 Candlestick Pattern Analysis:\n${response.reasoning}`;
     
