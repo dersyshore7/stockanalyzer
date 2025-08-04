@@ -546,3 +546,60 @@ export const generateTechnicalAnalysis = (data: ProcessedDataPoint[], timeframe:
 
   return `${timeframe}: Price $${currentPrice.toFixed(2)}, RSI ${rsiSignal}, ${smaSignal}, Trend ${trendSignal}, MACD ${macdSignal}, OBV ${obvSignal}, ATR ${atrText}, Volume ${volumeAnalysis.volumeTrend}`;
 };
+
+export interface QuickQuoteResponse {
+  'Global Quote'?: {
+    '01. symbol': string;
+    '02. open': string;
+    '03. high': string;
+    '04. low': string;
+    '05. price': string;
+    '06. volume': string;
+    '07. latest trading day': string;
+    '08. previous close': string;
+    '09. change': string;
+    '10. change percent': string;
+  };
+  'Error Message'?: string;
+  'Note'?: string;
+}
+
+export const getQuickPrice = async (symbol: string): Promise<{
+  currentPrice: number;
+  previousClose: number;
+  change: number;
+  changePercent: number;
+} | null> => {
+  try {
+    const response = await fetch(`${BASE_URL}?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${API_KEY}`);
+    const data: QuickQuoteResponse = await response.json();
+
+    if (data['Error Message']) {
+      throw new Error(`Alpha Vantage API Error: ${data['Error Message']}`);
+    }
+
+    if (data['Note']) {
+      throw new Error('API rate limit exceeded. Please wait or upgrade your Alpha Vantage API key.');
+    }
+
+    const quote = data['Global Quote'];
+    if (!quote) {
+      return null;
+    }
+
+    const currentPrice = parseFloat(quote['05. price']);
+    const previousClose = parseFloat(quote['08. previous close']);
+    const change = parseFloat(quote['09. change']);
+    const changePercent = parseFloat(quote['10. change percent'].replace('%', ''));
+
+    return {
+      currentPrice,
+      previousClose,
+      change,
+      changePercent
+    };
+  } catch (error) {
+    console.error(`Failed to fetch quick price for ${symbol}:`, error);
+    return null;
+  }
+};

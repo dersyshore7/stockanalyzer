@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { priceMonitor } from '@/services/priceMonitoring';
+import { getQuickPrice } from '@/services/alphaVantageApi';
 
 interface StockData {
   symbol: string;
@@ -13,8 +13,11 @@ interface StockData {
 }
 
 const MOST_TRADED_STOCKS = [
-  'AAPL', 'TSLA', 'NVDA', 'SPY', 'QQQ', 
-  'MSFT', 'AMZN', 'GOOGL', 'META', 'AMD'
+  'TSLA', 'NVDA', 'AMZN', 'META', 'MSFT', 'AAPL', 'AMD', 'PLTR', 'COIN', 'HOOD',
+  'MSTR', 'FIG', 'UNH', 'RDDT', 'AVGO', 'GOOG', 'SPOT', 'IDXX', 'CRCL', 'GTLS',
+  'NFLX', 'LLY', 'JOBY', 'APP', 'RBLX', 'SMCI', 'ORCL', 'HIMS', 'PANW', 'OKLO',
+  'GEV', 'CVNA', 'COST', 'BA', 'GOOGL', 'RGTI', 'IBM', 'BBAI', 'ISRG', 'VST',
+  'C', 'MELI', 'VRT', 'BTBD', 'BAC', 'SBUX', 'IONQ', 'CVX', 'MRVL', 'SHOP'
 ];
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -36,20 +39,16 @@ export function MostTradedStocks() {
       for (let i = 0; i < MOST_TRADED_STOCKS.length; i++) {
         const symbol = MOST_TRADED_STOCKS[i];
         try {
-          const currentPrice = await priceMonitor.getCurrentPrice(symbol);
-          if (currentPrice !== null) {
-            const previousClose = currentPrice * (0.98 + Math.random() * 0.04);
-            const change = currentPrice - previousClose;
-            const changePercent = (change / previousClose) * 100;
-            
+          const priceData = await getQuickPrice(symbol);
+          if (priceData) {
             setStocksData(prev => prev.map(s => 
               s.symbol === symbol 
                 ? {
                     ...s,
-                    currentPrice,
-                    previousClose,
-                    change,
-                    changePercent,
+                    currentPrice: priceData.currentPrice,
+                    previousClose: priceData.previousClose,
+                    change: priceData.change,
+                    changePercent: priceData.changePercent,
                     loading: false
                   }
                 : s
@@ -91,32 +90,32 @@ export function MostTradedStocks() {
   return (
     <Card className="w-full max-w-7xl mx-auto mb-8">
       <CardHeader>
-        <CardTitle className="text-center">Most Options-Traded Stocks</CardTitle>
+        <CardTitle className="text-center">Most Actively Traded Stocks</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3">
           {stocksData.map((stock) => (
-            <div key={stock.symbol} className="border rounded-lg p-4">
+            <div key={stock.symbol} className="border rounded-lg p-3">
               <div className="text-center">
-                <h3 className="font-semibold text-lg">{stock.symbol}</h3>
+                <h3 className="font-semibold text-sm">{stock.symbol}</h3>
                 {stock.loading ? (
-                  <div className="text-gray-500">Loading...</div>
+                  <div className="text-gray-500 text-xs">Loading...</div>
                 ) : stock.currentPrice !== null ? (
                   <>
-                    <div className="text-xl font-bold">
+                    <div className="text-sm font-bold">
                       {formatCurrency(stock.currentPrice)}
                     </div>
                     {stock.change !== null && stock.changePercent !== null && (
                       <Badge 
                         variant={stock.change >= 0 ? "default" : "destructive"}
-                        className="mt-1"
+                        className="mt-1 text-xs"
                       >
                         {formatChange(stock.change, stock.changePercent)}
                       </Badge>
                     )}
                   </>
                 ) : (
-                  <div className="text-gray-500">No data</div>
+                  <div className="text-gray-500 text-xs">No data</div>
                 )}
               </div>
             </div>
