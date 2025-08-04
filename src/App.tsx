@@ -3,6 +3,7 @@ import './App.css'
 import { StockInput } from '@/components/StockInput'
 import { OptionsAnalysis } from '@/components/OptionsAnalysis'
 import { TradeResults } from '@/components/TradeResults'
+import { MostTradedStocks } from '@/components/MostTradedStocks'
 
 type AppView = 'input' | 'analysis' | 'results';
 
@@ -51,6 +52,7 @@ function App() {
           </button>
         </div>
         
+        <MostTradedStocks />
         <StockInput onAnalyze={handleAnalyze} isLoading={false} />
       </div>
     </div>
