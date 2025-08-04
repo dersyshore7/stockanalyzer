@@ -17,6 +17,8 @@ const MOST_TRADED_STOCKS = [
   'MSFT', 'AMZN', 'GOOGL', 'META', 'AMD'
 ];
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export function MostTradedStocks() {
   const [stocksData, setStocksData] = useState<StockData[]>(
     MOST_TRADED_STOCKS.map(symbol => ({
@@ -31,16 +33,17 @@ export function MostTradedStocks() {
 
   useEffect(() => {
     const fetchStockData = async () => {
-      for (const stock of stocksData) {
+      for (let i = 0; i < MOST_TRADED_STOCKS.length; i++) {
+        const symbol = MOST_TRADED_STOCKS[i];
         try {
-          const currentPrice = await priceMonitor.getCurrentPrice(stock.symbol);
+          const currentPrice = await priceMonitor.getCurrentPrice(symbol);
           if (currentPrice !== null) {
             const previousClose = currentPrice * (0.98 + Math.random() * 0.04);
             const change = currentPrice - previousClose;
             const changePercent = (change / previousClose) * 100;
-
+            
             setStocksData(prev => prev.map(s => 
-              s.symbol === stock.symbol 
+              s.symbol === symbol 
                 ? {
                     ...s,
                     currentPrice,
@@ -51,12 +54,21 @@ export function MostTradedStocks() {
                   }
                 : s
             ));
+          } else {
+            setStocksData(prev => prev.map(s => 
+              s.symbol === symbol ? { ...s, loading: false } : s
+            ));
           }
         } catch (error) {
-          console.error(`Failed to fetch data for ${stock.symbol}:`, error);
+          console.error(`Failed to fetch data for ${symbol}:`, error);
           setStocksData(prev => prev.map(s => 
-            s.symbol === stock.symbol ? { ...s, loading: false } : s
+            s.symbol === symbol ? { ...s, loading: false } : s
           ));
+        }
+        
+        if (i < MOST_TRADED_STOCKS.length - 1) {
+          console.log(`Waiting 3 seconds before fetching next stock to prevent rate limiting...`);
+          await sleep(3000);
         }
       }
     };
