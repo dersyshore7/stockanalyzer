@@ -63,21 +63,21 @@ const calculateMACDSeries = (
     ema12[i] !== null && ema26[i] !== null ? (ema12[i]! - ema26[i]!) : null
   );
 
-  const macdValues: number[] = [];
-  const macdIndices: number[] = [];
-  macd.forEach((v, i) => {
-    if (v !== null) {
-      macdValues.push(v);
-      macdIndices.push(i);
-    }
-  });
+  const macdValues = macd.filter((v): v is number => v !== null);
+  if (macdValues.length < 9) {
+    return { macd, signal: Array(macd.length).fill(null) };
+  }
 
-  const signalValues = calculateEMAArray(macdValues, 9);
+  const signalEMA = calculateEMAArray(macdValues, 9);
   const signal: Array<number | null> = Array(macd.length).fill(null);
-  signalValues.forEach((v, idx) => {
-    const originalIndex = macdIndices[idx];
-    signal[originalIndex] = v;
-  });
+  
+  let signalIndex = 0;
+  for (let i = 0; i < macd.length; i++) {
+    if (macd[i] !== null) {
+      signal[i] = signalEMA[signalIndex] || null;
+      signalIndex++;
+    }
+  }
 
   return { macd, signal };
 };
@@ -86,6 +86,10 @@ const calculateATRSeries = (
   data: ProcessedDataPoint[],
   period: number = 14
 ): Array<number | null> => {
+  if (data.length < period + 1) {
+    return Array(data.length).fill(null);
+  }
+
   const trs: Array<number | null> = data.map((point, i) => {
     if (i === 0) return null;
     const prev = data[i - 1];
