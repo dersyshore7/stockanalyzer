@@ -66,11 +66,15 @@ const getLatestTradingDay = (date: Date): string => {
   const d = new Date(date);
   d.setUTCHours(0, 0, 0, 0);
   const day = d.getUTCDay();
+  
   if (day === 6) {
     d.setUTCDate(d.getUTCDate() - 1);
   } else if (day === 0) {
     d.setUTCDate(d.getUTCDate() - 2);
+  } else if (day === 1) {
+    d.setUTCDate(d.getUTCDate() - 3);
   }
+  
   return d.toISOString().split('T')[0];
 };
 
