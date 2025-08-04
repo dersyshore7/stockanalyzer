@@ -36,38 +36,50 @@ export function MostTradedStocks() {
 
   useEffect(() => {
     const fetchStockData = async () => {
-      for (let i = 0; i < MOST_TRADED_STOCKS.length; i++) {
-        const symbol = MOST_TRADED_STOCKS[i];
-        try {
-          const priceData = await getQuickPrice(symbol);
-          if (priceData) {
-            setStocksData(prev => prev.map(s => 
-              s.symbol === symbol 
-                ? {
-                    ...s,
-                    currentPrice: priceData.currentPrice,
-                    previousClose: priceData.previousClose,
-                    change: priceData.change,
-                    changePercent: priceData.changePercent,
-                    loading: false
-                  }
-                : s
-            ));
-          } else {
+      const batchSize = 5;
+      const batches = [];
+      
+      for (let i = 0; i < MOST_TRADED_STOCKS.length; i += batchSize) {
+        batches.push(MOST_TRADED_STOCKS.slice(i, i + batchSize));
+      }
+      
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+        
+        const batchPromises = batch.map(async (symbol) => {
+          try {
+            const priceData = await getQuickPrice(symbol);
+            if (priceData) {
+              setStocksData(prev => prev.map(s => 
+                s.symbol === symbol 
+                  ? {
+                      ...s,
+                      currentPrice: priceData.currentPrice,
+                      previousClose: priceData.previousClose,
+                      change: priceData.change,
+                      changePercent: priceData.changePercent,
+                      loading: false
+                    }
+                  : s
+              ));
+            } else {
+              setStocksData(prev => prev.map(s => 
+                s.symbol === symbol ? { ...s, loading: false } : s
+              ));
+            }
+          } catch (error) {
+            console.error(`Failed to fetch data for ${symbol}:`, error);
             setStocksData(prev => prev.map(s => 
               s.symbol === symbol ? { ...s, loading: false } : s
             ));
           }
-        } catch (error) {
-          console.error(`Failed to fetch data for ${symbol}:`, error);
-          setStocksData(prev => prev.map(s => 
-            s.symbol === symbol ? { ...s, loading: false } : s
-          ));
-        }
+        });
         
-        if (i < MOST_TRADED_STOCKS.length - 1) {
-          console.log(`Waiting 3 seconds before fetching next stock to prevent rate limiting...`);
-          await sleep(3000);
+        await Promise.all(batchPromises);
+        
+        if (batchIndex < batches.length - 1) {
+          console.log(`Batch ${batchIndex + 1}/${batches.length} completed. Waiting 1 second before next batch...`);
+          await sleep(1000);
         }
       }
     };
