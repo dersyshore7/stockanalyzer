@@ -585,7 +585,7 @@ ${technicalSummary}
                   </div>
                 ) : (
                   <div>
-                    {rec.charts && rec.charts.length > 0 && import.meta.env.VITE_SHOW_CHARTS_IN_UI !== 'false' && (
+                    {rec.charts && rec.charts.length > 0 && import.meta.env.VITE_SHOW_CHARTS_IN_UI === 'true' && (
                       <div className="mb-4">
                         <h4 className="font-semibold mb-2">Generated Charts:</h4>
                         <div className="grid grid-cols-2 gap-2">
@@ -657,7 +657,7 @@ ${technicalSummary}
           ))}
         </div>
       </div>
-      <Dialog open={!!enlargedChart && import.meta.env.VITE_SHOW_CHARTS_IN_UI !== 'false'} onOpenChange={(open) => !open && setEnlargedChart(null)}>
+      <Dialog open={!!enlargedChart && import.meta.env.VITE_SHOW_CHARTS_IN_UI === 'true'} onOpenChange={(open) => !open && setEnlargedChart(null)}>
         <DialogContent className="max-w-3xl">
           {enlargedChart && (
             <div className="text-center">
