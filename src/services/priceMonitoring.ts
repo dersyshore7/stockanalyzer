@@ -1,4 +1,4 @@
-import { getMultiTimeframeData } from './alphaVantageApi';
+import { getQuickPrice } from './alphaVantageApi';
 
 export interface PriceUpdate {
   symbol: string;
@@ -7,7 +7,7 @@ export interface PriceUpdate {
 }
 
 export class PriceMonitor {
-  private intervals: Map<string, NodeJS.Timeout> = new Map();
+  private intervals: Map<string, ReturnType<typeof setInterval>> = new Map();
   private callbacks: Map<string, (update: PriceUpdate) => void> = new Map();
 
   startMonitoring(symbol: string, callback: (update: PriceUpdate) => void, intervalMs: number = 300000) {
@@ -17,17 +17,11 @@ export class PriceMonitor {
     
     const fetchPrice = async () => {
       try {
-        const result = await getMultiTimeframeData(symbol);
-        if (result.status.isStale) {
-          console.warn(`Data for ${symbol} is stale as of ${result.status.lastRefreshed}`);
-          return;
-        }
-        const data = result.data;
-        if (data.day && data.day.length > 0) {
-          const latestPrice = data.day[data.day.length - 1].close;
+        const result = await getQuickPrice(symbol);
+        if (result) {
           callback({
             symbol,
-            currentPrice: latestPrice,
+            currentPrice: result.currentPrice,
             timestamp: new Date(),
           });
         }
@@ -59,16 +53,8 @@ export class PriceMonitor {
 
   async getCurrentPrice(symbol: string): Promise<number | null> {
     try {
-      const result = await getMultiTimeframeData(symbol);
-      if (result.status.isStale) {
-        console.warn(`Data for ${symbol} is stale as of ${result.status.lastRefreshed}`);
-        return null;
-      }
-      const data = result.data;
-      if (data.day && data.day.length > 0) {
-        return data.day[data.day.length - 1].close;
-      }
-      return null;
+      const result = await getQuickPrice(symbol);
+      return result ? result.currentPrice : null;
     } catch (error) {
       console.error(`Failed to fetch current price for ${symbol}:`, error);
       return null;

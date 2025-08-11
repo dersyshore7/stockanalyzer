@@ -366,8 +366,6 @@ export const generateMultiTimeframeCharts = async (
     year: ProcessedDataPoint[];
   }
 ): Promise<ChartImage[]> => {
-  const charts: ChartImage[] = [];
-  
   const timeframes = [
     { key: 'day' as keyof typeof data, label: 'Day' },
     { key: 'week' as keyof typeof data, label: 'Week' },
@@ -377,26 +375,38 @@ export const generateMultiTimeframeCharts = async (
     { key: 'year' as keyof typeof data, label: 'Year' }
   ];
 
-  for (const timeframe of timeframes) {
-    try {
-      const chartData = data[timeframe.key];
-      if (chartData && chartData.length > 0) {
-        const priceUrl = await generateCandlestickChart(chartData, symbol, timeframe.label);
-        charts.push({ timeframe: `${timeframe.label} Price`, dataUrl: priceUrl });
+  const chartPromises = timeframes.flatMap(timeframe => {
+    const chartData = data[timeframe.key];
+    if (!chartData || chartData.length === 0) return [];
+    
+    return [
+      generateCandlestickChart(chartData, symbol, timeframe.label)
+        .then(dataUrl => ({ timeframe: `${timeframe.label} Price`, dataUrl }))
+        .catch(error => {
+          console.error(`Error generating ${timeframe.label} price chart:`, error);
+          return null;
+        }),
+      generateMACDChart(chartData, symbol, timeframe.label)
+        .then(dataUrl => ({ timeframe: `${timeframe.label} MACD`, dataUrl }))
+        .catch(error => {
+          console.error(`Error generating ${timeframe.label} MACD chart:`, error);
+          return null;
+        }),
+      generateOBVChart(chartData, symbol, timeframe.label)
+        .then(dataUrl => ({ timeframe: `${timeframe.label} OBV`, dataUrl }))
+        .catch(error => {
+          console.error(`Error generating ${timeframe.label} OBV chart:`, error);
+          return null;
+        }),
+      generateATRChart(chartData, symbol, timeframe.label)
+        .then(dataUrl => ({ timeframe: `${timeframe.label} ATR`, dataUrl }))
+        .catch(error => {
+          console.error(`Error generating ${timeframe.label} ATR chart:`, error);
+          return null;
+        })
+    ];
+  });
 
-        const macdUrl = await generateMACDChart(chartData, symbol, timeframe.label);
-        charts.push({ timeframe: `${timeframe.label} MACD`, dataUrl: macdUrl });
-
-        const obvUrl = await generateOBVChart(chartData, symbol, timeframe.label);
-        charts.push({ timeframe: `${timeframe.label} OBV`, dataUrl: obvUrl });
-
-        const atrUrl = await generateATRChart(chartData, symbol, timeframe.label);
-        charts.push({ timeframe: `${timeframe.label} ATR`, dataUrl: atrUrl });
-      }
-    } catch (error) {
-      console.error(`Error generating ${timeframe.label} chart:`, error);
-    }
-  }
-
-  return charts;
+  const results = await Promise.all(chartPromises);
+  return results.filter((chart): chart is ChartImage => chart !== null);
 };
