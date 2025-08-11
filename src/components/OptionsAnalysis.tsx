@@ -9,6 +9,21 @@ import { generateMultiTimeframeCharts, ChartImage } from '@/services/chartGenera
 import { useTradeTracking } from '@/hooks/use-trade-tracking';
 import { priceMonitor } from '@/services/priceMonitoring';
 
+const MAX_EXPIRATION_DAYS = 14;
+
+const isWithinTwoWeeks = (expirationDate: string): boolean => {
+  try {
+    const expDate = new Date(expirationDate);
+    const today = new Date();
+    const diffTime = expDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays >= 0 && diffDays <= MAX_EXPIRATION_DAYS;
+  } catch (error) {
+    console.error('Error parsing expiration date:', error);
+    return false;
+  }
+};
+
 interface OptionsRecommendation {
   symbol: string;
   recommendation: string;
@@ -153,7 +168,7 @@ If recommending "No Action Recommended", omit the "action" field entirely.
 
 Choose an expiration date that best supports the recommended option trade and provide it in YYYY-MM-DD format. Include a brief explanation of why this expiration date was chosen.
 
-Bias recommendations toward short-term options trades (expiration within 14 days) whenever technically sound. If suggesting a longer expiration, clearly justify why a short-term option is not appropriate.
+MANDATORY CONSTRAINT: You MUST only recommend options that expire within 14 days from today. Do not provide any recommendations for options expiring beyond 14 days. If no technically sound short-term option opportunity exists, set recommendationType to "No Action Recommended".
 
 Your recommendation should be grounded in technical analysis including RSI, 50- & 200-day moving averages (trend direction), MACD (momentum), On-Balance Volume (OBV for volume flow), Average True Range (ATR for volatility), broader volume analysis, momentum, and candlestick patterns. Look for confluence of multiple technical indicators. If there are clear technical signals from multiple indicators pointing in the same direction, provide a recommendation. If the technical indicators are mixed or neutral, set recommendationType to "No Action Recommended".
 
@@ -217,6 +232,20 @@ Technical Data: ${chartDescriptions}`
                 try {
                   const parsedResponse: OpenAIRecommendationResponse = JSON.parse(jsonContent.trim());
                   console.log('Parsed OpenAI response:', parsedResponse);
+                  
+                  if (parsedResponse.action && parsedResponse.recommendationType !== 'No Action Recommended') {
+                    if (!isWithinTwoWeeks(parsedResponse.action.expirationDate)) {
+                      console.log(`Rejecting recommendation for ${symbol}: expiration date ${parsedResponse.action.expirationDate} is beyond 14-day limit`);
+                      const rejectedResponse: OpenAIRecommendationResponse = {
+                        recommendationType: 'No Action Recommended',
+                        confidence: 'Medium',
+                        reasoning: `Original recommendation rejected: expiration date (${parsedResponse.action.expirationDate}) exceeds the 14-day maximum constraint. No suitable short-term options opportunity identified.`
+                      };
+                      const formattedRecommendation = formatRecommendationForDisplay(rejectedResponse);
+                      return { recommendation: formattedRecommendation, parsedRecommendation: rejectedResponse };
+                    }
+                  }
+                  
                   const formattedRecommendation = formatRecommendationForDisplay(parsedResponse);
                   console.log('Formatted recommendation:', formattedRecommendation);
                   return { recommendation: formattedRecommendation, parsedRecommendation: parsedResponse };
