@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { getMultiTimeframeData, generateTechnicalAnalysis } from '@/services/alphaVantageApi';
-import { generateMultiTimeframeCharts, ChartImage } from '@/services/chartGenerator';
+import { ChartImage } from '@/services/chartGenerator';
 import { useTradeTracking } from '@/hooks/use-trade-tracking';
 import { priceMonitor } from '@/services/priceMonitoring';
 
@@ -53,7 +54,7 @@ interface OptionsAnalysisProps {
 
 type MultiTimeframeData = Awaited<ReturnType<typeof getMultiTimeframeData>>['data'];
 
-export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
+export const OptionsAnalysis = React.memo(({ symbols, onBack }: OptionsAnalysisProps) => {
   const [recommendations, setRecommendations] = useState<OptionsRecommendation[]>([]);
   const [currentSymbolIndex, setCurrentSymbolIndex] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -61,7 +62,7 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
   const [enlargedChart, setEnlargedChart] = useState<(ChartImage & { symbol: string }) | null>(null);
   const { confirmTrade, getTradeBySymbol, updateTradePrice } = useTradeTracking();
 
-  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  const sleep = useCallback((ms: number) => new Promise(resolve => setTimeout(resolve, ms)), []);
 
     const retryWithBackoff = async <T,>(
       fn: () => Promise<T>,
@@ -108,7 +109,9 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
       }
       const data = result.data;
       const charts = import.meta.env.VITE_GENERATE_CHARTS !== 'false' 
-        ? await generateMultiTimeframeCharts(symbol, data)
+        ? await import('../services/chartGenerator').then(module => 
+            module.generateMultiTimeframeCharts(symbol, data)
+          )
         : [];
 
       const technicalAnalysis = [
@@ -451,28 +454,29 @@ ${technicalSummary}
 ✅ Technical Indicators: RSI, SMA50/200, MACD, OBV, ATR, Volume, Momentum calculated`;
   };
 
-  const analyzeAllSymbols = async () => {
+  const analyzeAllSymbols = useCallback(async () => {
     setIsAnalyzing(true);
     setRecommendations([]);
     
-    for (let i = 0; i < symbols.length; i++) {
-      setCurrentSymbolIndex(i);
-      await analyzeSymbol(symbols[i]);
-      
-      if (i < symbols.length - 1) {
-        console.log(`Waiting 3 seconds before analyzing next stock to prevent rate limiting...`);
-        await sleep(3000);
-      }
-    }
+    const analysisPromises = symbols.map((symbol, index) => {
+      return new Promise<void>((resolve) => {
+        setTimeout(async () => {
+          setCurrentSymbolIndex(index);
+          await analyzeSymbol(symbol);
+          resolve();
+        }, index * 1000);
+      });
+    });
     
+    await Promise.all(analysisPromises);
     setIsAnalyzing(false);
-  };
+  }, [symbols, analyzeSymbol]);
 
-  const closeRecommendation = (symbol: string) => {
+  const closeRecommendation = useCallback((symbol: string) => {
     setRecommendations(prev => prev.filter(r => r.symbol !== symbol));
-  };
+  }, []);
 
-  const handleConfirmTrade = async (rec: OptionsRecommendation) => {
+  const handleConfirmTrade = useCallback(async (rec: OptionsRecommendation) => {
     if (!rec.parsedRecommendation || rec.parsedRecommendation.recommendationType === 'No Action Recommended') {
       return;
     }
@@ -490,19 +494,19 @@ ${technicalSummary}
     }
 
     setEntryPrices(prev => ({ ...prev, [rec.symbol]: '' }));
-  };
+  }, [entryPrices, confirmTrade, updateTradePrice]);
 
-  const handleEntryPriceChange = (symbol: string, value: string) => {
+  const handleEntryPriceChange = useCallback((symbol: string, value: string) => {
     setEntryPrices(prev => ({ ...prev, [symbol]: value }));
-  };
+  }, []);
 
 
-  const isTradeConfirmed = (symbol: string) => {
+  const isTradeConfirmed = useCallback((symbol: string) => {
     const existingTrade = getTradeBySymbol(symbol);
     return existingTrade !== undefined;
-  };
+  }, [getTradeBySymbol]);
 
-  const getTradeStatus = (symbol: string) => {
+  const getTradeStatus = useCallback((symbol: string) => {
     const existingTrade = getTradeBySymbol(symbol);
     if (!existingTrade) return null;
 
@@ -526,7 +530,7 @@ ${technicalSummary}
       default:
         return null;
     }
-  };
+  }, [getTradeBySymbol]);
 
   return (
     <div className="min-h-screen bg-gray-100 p-4">
@@ -675,4 +679,4 @@ ${technicalSummary}
       </Dialog>
     </div>
   );
-}
+});

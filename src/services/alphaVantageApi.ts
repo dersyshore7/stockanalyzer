@@ -1,3 +1,5 @@
+import { withCache, technicalCache } from './cache';
+
 export interface TimeSeriesData {
   [date: string]: {
     '1. open': string;
@@ -219,73 +221,77 @@ const fetchYahooFinanceData = async (symbol: string): Promise<FetchedSeries> => 
 export const getMultiTimeframeData = async (
   symbol: string
 ): Promise<{ data: MultiTimeframeData; status: QuoteStatus }> => {
-  try {
-    const [daily, weekly, monthly] = await Promise.all([
-      fetchDailyData(symbol),
-      fetchWeeklyData(symbol),
-      fetchMonthlyData(symbol)
-    ]);
-
-    const now = new Date();
-    const threeMonthsAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-    const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
-    const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-
-    const data: MultiTimeframeData = {
-      day: daily.data.slice(-30),
-      week: weekly.slice(-12),
-      month: monthly.slice(-12),
-      threeMonth: daily.data.filter(d => new Date(d.date) >= threeMonthsAgo),
-      sixMonth: daily.data.filter(d => new Date(d.date) >= sixMonthsAgo),
-      year: daily.data.filter(d => new Date(d.date) >= oneYearAgo)
-    };
-
-    return {
-      data,
-      status: {
-        lastRefreshed: daily.lastRefreshed,
-        isStale: isDataStale(daily.lastRefreshed)
-      }
-    };
-  } catch (error) {
-    console.error('Alpha Vantage failed, trying Yahoo Finance fallback:', error);
-
+  const cacheKey = `multiTimeframe_${symbol}`;
+  
+  return withCache(cacheKey, async () => {
     try {
-      const yahooData = await fetchYahooFinanceData(symbol);
-
-      if (yahooData.data.length === 0) {
-        throw new Error('No data available for this symbol');
-      }
+      const [daily, weekly, monthly] = await Promise.all([
+        fetchDailyData(symbol),
+        fetchWeeklyData(symbol),
+        fetchMonthlyData(symbol)
+      ]);
 
       const now = new Date();
       const threeMonthsAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
       const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
       const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
 
-      const weeklyData = generateWeeklyFromDaily(yahooData.data);
-      const monthlyData = generateMonthlyFromDaily(yahooData.data);
-
       const data: MultiTimeframeData = {
-        day: yahooData.data.slice(-30),
-        week: weeklyData.slice(-12),
-        month: monthlyData.slice(-12),
-        threeMonth: yahooData.data.filter(d => new Date(d.date) >= threeMonthsAgo),
-        sixMonth: yahooData.data.filter(d => new Date(d.date) >= sixMonthsAgo),
-        year: yahooData.data.filter(d => new Date(d.date) >= oneYearAgo)
+        day: daily.data.slice(-30),
+        week: weekly.slice(-12),
+        month: monthly.slice(-12),
+        threeMonth: daily.data.filter(d => new Date(d.date) >= threeMonthsAgo),
+        sixMonth: daily.data.filter(d => new Date(d.date) >= sixMonthsAgo),
+        year: daily.data.filter(d => new Date(d.date) >= oneYearAgo)
       };
 
       return {
         data,
         status: {
-          lastRefreshed: yahooData.lastRefreshed,
-          isStale: isDataStale(yahooData.lastRefreshed)
+          lastRefreshed: daily.lastRefreshed,
+          isStale: isDataStale(daily.lastRefreshed)
         }
       };
-    } catch (fallbackError) {
-      console.error('Yahoo Finance CORS proxy fallback also failed:', fallbackError);
-      throw new Error('Unable to fetch stock data from any source. Please check the symbol and try again.');
+    } catch (error) {
+      console.error('Alpha Vantage failed, trying Yahoo Finance fallback:', error);
+
+      try {
+        const yahooData = await fetchYahooFinanceData(symbol);
+
+        if (yahooData.data.length === 0) {
+          throw new Error('No data available for this symbol');
+        }
+
+        const now = new Date();
+        const threeMonthsAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
+        const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+
+        const weeklyData = generateWeeklyFromDaily(yahooData.data);
+        const monthlyData = generateMonthlyFromDaily(yahooData.data);
+
+        const data: MultiTimeframeData = {
+          day: yahooData.data.slice(-30),
+          week: weeklyData.slice(-12),
+          month: monthlyData.slice(-12),
+          threeMonth: yahooData.data.filter(d => new Date(d.date) >= threeMonthsAgo),
+          sixMonth: yahooData.data.filter(d => new Date(d.date) >= sixMonthsAgo),
+          year: yahooData.data.filter(d => new Date(d.date) >= oneYearAgo)
+        };
+
+        return {
+          data,
+          status: {
+            lastRefreshed: yahooData.lastRefreshed,
+            isStale: isDataStale(yahooData.lastRefreshed)
+          }
+        };
+      } catch (fallbackError) {
+        console.error('Yahoo Finance CORS proxy fallback also failed:', fallbackError);
+        throw new Error('Unable to fetch stock data from any source. Please check the symbol and try again.');
+      }
     }
-  }
+  }, 300000);
 };
 
 const generateWeeklyFromDaily = (dailyData: ProcessedDataPoint[]): ProcessedDataPoint[] => {
@@ -358,6 +364,10 @@ const generateMonthlyFromDaily = (dailyData: ProcessedDataPoint[]): ProcessedDat
 };
 
 export const calculateRSI = (data: ProcessedDataPoint[], period: number = 14): number => {
+  const cacheKey = `rsi_${JSON.stringify(data.slice(-period-1))}_${period}`;
+  const cached = technicalCache.get<number>(cacheKey);
+  if (cached !== null) return cached;
+
   if (data.length < period + 1) return 50;
   
   const prices = data.slice(-period - 1);
@@ -379,15 +389,25 @@ export const calculateRSI = (data: ProcessedDataPoint[], period: number = 14): n
   if (avgLoss === 0) return 100;
   
   const rs = avgGain / avgLoss;
-  return 100 - (100 / (1 + rs));
+  const result = 100 - (100 / (1 + rs));
+  
+  technicalCache.set(cacheKey, result, 60000);
+  return result;
 };
 
 export const calculateSMA = (data: ProcessedDataPoint[], period: number): number => {
+  const cacheKey = `sma_${JSON.stringify(data.slice(-period))}_${period}`;
+  const cached = technicalCache.get<number>(cacheKey);
+  if (cached !== null) return cached;
+
   if (data.length < period) return data[data.length - 1]?.close || 0;
   
   const prices = data.slice(-period);
   const sum = prices.reduce((acc, point) => acc + point.close, 0);
-  return sum / period;
+  const result = sum / period;
+  
+  technicalCache.set(cacheKey, result, 60000);
+  return result;
 };
 
 export const calculateVolumeAnalysis = (data: ProcessedDataPoint[]): {
@@ -427,6 +447,10 @@ export const calculateEMA = (data: ProcessedDataPoint[], period: number): number
 export const calculateMACD = (
   data: ProcessedDataPoint[]
 ): { macd: number; signal: number } => {
+  const cacheKey = `macd_${JSON.stringify(data.slice(-35))}`;
+  const cached = technicalCache.get<{ macd: number; signal: number }>(cacheKey);
+  if (cached !== null) return cached;
+
   if (data.length < 35) return { macd: 0, signal: 0 };
 
   const ema12Arr: number[] = [];
@@ -465,8 +489,10 @@ export const calculateMACD = (
   }
 
   const macd = macdSeries[macdSeries.length - 1];
+  const result = { macd, signal };
 
-  return { macd, signal };
+  technicalCache.set(cacheKey, result, 60000);
+  return result;
 };
 
 export const calculateOBV = (data: ProcessedDataPoint[]): number[] => {
