@@ -107,7 +107,9 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
         return;
       }
       const data = result.data;
-      const charts = await generateMultiTimeframeCharts(symbol, data);
+      const charts = import.meta.env.VITE_GENERATE_CHARTS !== 'false' 
+        ? await generateMultiTimeframeCharts(symbol, data)
+        : [];
 
       const technicalAnalysis = [
         generateTechnicalAnalysis(data.day, 'Day'),
@@ -121,7 +123,7 @@ export function OptionsAnalysis({ symbols, onBack }: OptionsAnalysisProps) {
       const chartDescriptions = `Technical Analysis Summary:
 ${technicalAnalysis}
 
-  Chart Analysis: ${charts.length} candlestick charts generated showing price action, volume, and technical indicators (SMA50, SMA200, MACD, OBV, ATR) across multiple timeframes.`;
+  Chart Analysis: ${charts.length > 0 ? `${charts.length} candlestick charts generated showing price action, volume, and technical indicators (SMA50, SMA200, MACD, OBV, ATR) across multiple timeframes.` : 'Chart generation disabled - analysis based on technical indicators only.'}`;
 
       const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
       let recommendation = '';
@@ -583,7 +585,7 @@ ${technicalSummary}
                   </div>
                 ) : (
                   <div>
-                    {rec.charts && rec.charts.length > 0 && (
+                    {rec.charts && rec.charts.length > 0 && import.meta.env.VITE_SHOW_CHARTS_IN_UI !== 'false' && (
                       <div className="mb-4">
                         <h4 className="font-semibold mb-2">Generated Charts:</h4>
                         <div className="grid grid-cols-2 gap-2">
@@ -655,7 +657,7 @@ ${technicalSummary}
           ))}
         </div>
       </div>
-      <Dialog open={!!enlargedChart} onOpenChange={(open) => !open && setEnlargedChart(null)}>
+      <Dialog open={!!enlargedChart && import.meta.env.VITE_SHOW_CHARTS_IN_UI !== 'false'} onOpenChange={(open) => !open && setEnlargedChart(null)}>
         <DialogContent className="max-w-3xl">
           {enlargedChart && (
             <div className="text-center">
