@@ -165,21 +165,30 @@ When choosing an expiration date:
 - Provide the expiration date in YYYY-MM-DD format
 - Include a brief explanation of why this specific expiration date was chosen within the 14-day window
 
-Your recommendation should be grounded in technical analysis including RSI, 50- & 200-day moving averages (trend direction), MACD (momentum), On-Balance Volume (OBV for volume flow), Average True Range (ATR for volatility), broader volume analysis, momentum, and candlestick patterns. Look for confluence of multiple technical indicators. If there are clear technical signals from multiple indicators pointing in the same direction, provide a recommendation. If the technical indicators are mixed or neutral, set recommendationType to "No Action Recommended".
+Your recommendation must be FIRST rooted in candlestick pattern analysis, THEN supported by technical indicators for confirmation.
 
-Consider the following for recommendations:
-- RSI overbought (>70) or oversold (<30) conditions
-- Position relative to 50- & 200-day moving averages and crossovers
-- MACD alignment above/below the signal line for momentum shifts
-- OBV rising or falling to gauge volume participation
-- ATR values to measure current volatility
-- Candlestick patterns (doji, hammer, engulfing, etc.)
-- Overall trend direction across timeframes
+ANALYSIS HIERARCHY (in order of priority):
+1. **PRIMARY: Candlestick Pattern Analysis**
+   - Identify key candlestick patterns (doji, hammer, engulfing, shooting star, hanging man, etc.)
+   - Analyze pattern context within recent price action
+   - Determine bullish/bearish implications of the patterns
+   - Only proceed to technical indicators if candlestick patterns provide clear directional signals
+
+2. **SECONDARY: Technical Indicator Confirmation**
+   - Use technical indicators to SUPPORT the candlestick analysis, not lead it
+   - RSI overbought (>70) or oversold (<30) conditions
+   - Position relative to 50- & 200-day moving averages and crossovers
+   - MACD alignment above/below the signal line for momentum shifts
+   - OBV rising or falling to gauge volume participation
+   - ATR values to measure current volatility
+   - Overall trend direction across timeframes
+
+If candlestick patterns are unclear, neutral, or conflicting, set recommendationType to "No Action Recommended" regardless of technical indicators.
 
 CONFIDENCE LEVEL CRITERIA:
-- High 🟢: Strong confluence of 4+ indicators (e.g., RSI extremes, SMA50/200 crossover, MACD agreement, OBV trend, ATR context) pointing in same direction, strong volume confirmation, clear candlestick patterns
-- Medium 🟡: Moderate confluence of 2-3 of these indicators with mostly consistent signals, RSI approaching extremes (60-70 or 30-40)
-- Low 🔴: Weak or conflicting signals among indicators, neutral RSI (40-60), unclear trend direction, high uncertainty
+- High 🟢: Strong, clear candlestick patterns with 3+ technical indicators confirming the same direction, strong volume confirmation
+- Medium 🟡: Moderate candlestick signals with 2-3 technical indicators supporting, some confirmation present
+- Low 🔴: Weak or unclear candlestick patterns, conflicting technical indicators, high uncertainty
 
 Provide detailed reasoning explaining which specific technical indicators support your recommendation and justify your confidence level.
 
