@@ -10,20 +10,6 @@ import { ChartImage } from '@/services/chartGenerator';
 import { useTradeTracking } from '@/hooks/use-trade-tracking';
 import { priceMonitor } from '@/services/priceMonitoring';
 
-const MAX_EXPIRATION_DAYS = 14;
-
-const isWithinTwoWeeks = (expirationDate: string): boolean => {
-  try {
-    const expDate = new Date(expirationDate);
-    const today = new Date();
-    const diffTime = expDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays >= 0 && diffDays <= MAX_EXPIRATION_DAYS;
-  } catch (error) {
-    console.error('Error parsing expiration date:', error);
-    return false;
-  }
-};
 
 interface OptionsRecommendation {
   symbol: string;
@@ -171,25 +157,43 @@ IMPORTANT: Respond with ONLY valid JSON in this exact format (no markdown, no ex
 
 If recommending "No Action Recommended", omit the "action" field entirely.
 
-Choose an expiration date that best supports the recommended option trade and provide it in YYYY-MM-DD format. Include a brief explanation of why this expiration date was chosen.
+⚠️ CRITICAL EXPIRATION CONSTRAINT ⚠️
+YOU MUST ONLY RECOMMEND OPTIONS THAT EXPIRE WITHIN 14 DAYS FROM TODAY'S DATE.
+NEVER, UNDER ANY CIRCUMSTANCES, suggest options expiring beyond 14 days.
+This is a HARD LIMIT - no exceptions.
 
-MANDATORY CONSTRAINT: You MUST only recommend options that expire within 14 days from today. Do not provide any recommendations for options expiring beyond 14 days. If no technically sound short-term option opportunity exists, set recommendationType to "No Action Recommended".
+If no technically sound short-term option opportunity exists within 14 days, you MUST set recommendationType to "No Action Recommended".
 
-Your recommendation should be grounded in technical analysis including RSI, 50- & 200-day moving averages (trend direction), MACD (momentum), On-Balance Volume (OBV for volume flow), Average True Range (ATR for volatility), broader volume analysis, momentum, and candlestick patterns. Look for confluence of multiple technical indicators. If there are clear technical signals from multiple indicators pointing in the same direction, provide a recommendation. If the technical indicators are mixed or neutral, set recommendationType to "No Action Recommended".
+When choosing an expiration date:
+- Calculate exactly how many days from today
+- Only select dates that are 14 days or fewer from today
+- Provide the expiration date in YYYY-MM-DD format
+- Include a brief explanation of why this specific expiration date was chosen within the 14-day window
 
-Consider the following for recommendations:
-- RSI overbought (>70) or oversold (<30) conditions
-- Position relative to 50- & 200-day moving averages and crossovers
-- MACD alignment above/below the signal line for momentum shifts
-- OBV rising or falling to gauge volume participation
-- ATR values to measure current volatility
-- Candlestick patterns (doji, hammer, engulfing, etc.)
-- Overall trend direction across timeframes
+Your recommendation must be FIRST rooted in candlestick pattern analysis, THEN supported by technical indicators for confirmation.
+
+ANALYSIS HIERARCHY (in order of priority):
+1. **PRIMARY: Candlestick Pattern Analysis**
+   - Identify key candlestick patterns (doji, hammer, engulfing, shooting star, hanging man, etc.)
+   - Analyze pattern context within recent price action
+   - Determine bullish/bearish implications of the patterns
+   - Only proceed to technical indicators if candlestick patterns provide clear directional signals
+
+2. **SECONDARY: Technical Indicator Confirmation**
+   - Use technical indicators to SUPPORT the candlestick analysis, not lead it
+   - RSI overbought (>70) or oversold (<30) conditions
+   - Position relative to 50- & 200-day moving averages and crossovers
+   - MACD alignment above/below the signal line for momentum shifts
+   - OBV rising or falling to gauge volume participation
+   - ATR values to measure current volatility
+   - Overall trend direction across timeframes
+
+If candlestick patterns are unclear, neutral, or conflicting, set recommendationType to "No Action Recommended" regardless of technical indicators.
 
 CONFIDENCE LEVEL CRITERIA:
-- High 🟢: Strong confluence of 4+ indicators (e.g., RSI extremes, SMA50/200 crossover, MACD agreement, OBV trend, ATR context) pointing in same direction, strong volume confirmation, clear candlestick patterns
-- Medium 🟡: Moderate confluence of 2-3 of these indicators with mostly consistent signals, RSI approaching extremes (60-70 or 30-40)
-- Low 🔴: Weak or conflicting signals among indicators, neutral RSI (40-60), unclear trend direction, high uncertainty
+- High 🟢: Strong, clear candlestick patterns with 3+ technical indicators confirming the same direction, strong volume confirmation
+- Medium 🟡: Moderate candlestick signals with 2-3 technical indicators supporting, some confirmation present
+- Low 🔴: Weak or unclear candlestick patterns, conflicting technical indicators, high uncertainty
 
 Provide detailed reasoning explaining which specific technical indicators support your recommendation and justify your confidence level.
 
@@ -237,19 +241,6 @@ Technical Data: ${chartDescriptions}`
                 try {
                   const parsedResponse: OpenAIRecommendationResponse = JSON.parse(jsonContent.trim());
                   console.log('Parsed OpenAI response:', parsedResponse);
-                  
-                  if (parsedResponse.action && parsedResponse.recommendationType !== 'No Action Recommended') {
-                    if (!isWithinTwoWeeks(parsedResponse.action.expirationDate)) {
-                      console.log(`Rejecting recommendation for ${symbol}: expiration date ${parsedResponse.action.expirationDate} is beyond 14-day limit`);
-                      const rejectedResponse: OpenAIRecommendationResponse = {
-                        recommendationType: 'No Action Recommended',
-                        confidence: 'Medium',
-                        reasoning: `Original recommendation rejected: expiration date (${parsedResponse.action.expirationDate}) exceeds the 14-day maximum constraint. No suitable short-term options opportunity identified.`
-                      };
-                      const formattedRecommendation = formatRecommendationForDisplay(rejectedResponse);
-                      return { recommendation: formattedRecommendation, parsedRecommendation: rejectedResponse };
-                    }
-                  }
                   
                   const formattedRecommendation = formatRecommendationForDisplay(parsedResponse);
                   console.log('Formatted recommendation:', formattedRecommendation);
