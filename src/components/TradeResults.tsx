@@ -156,7 +156,7 @@ export function TradeResults({ onBack }: TradeResultsProps) {
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
                       <div>
                         <span className="text-gray-500">Entry Price:</span>
                         <div className="font-medium">
@@ -170,9 +170,15 @@ export function TradeResults({ onBack }: TradeResultsProps) {
                         </div>
                       </div>
                       <div>
-                        <span className="text-gray-500">Target:</span>
+                        <span className="text-gray-500">Take Profit:</span>
                         <div className="font-medium">
-                          ${trade.recommendation.action?.targetPrice}
+                          ${trade.recommendation.action?.exitStrategy.takeProfitStockPrice}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Stop Loss:</span>
+                        <div className="font-medium">
+                          ${trade.recommendation.action?.exitStrategy.stopLossStockPrice}
                         </div>
                       </div>
                       <div>

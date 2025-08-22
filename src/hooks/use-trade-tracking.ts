@@ -8,10 +8,12 @@ export interface TrackedTrade {
       action?: {
         strikePrice: number;
         optionType: 'call' | 'put';
-        targetPrice: number;
-        priceType: 'bid' | 'ask';
         expirationDate: string;
         expirationReason: string;
+        exitStrategy: {
+          takeProfitStockPrice: number;
+          stopLossStockPrice: number;
+        };
       };
       reasoning: string;
     };
